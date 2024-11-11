@@ -1,0 +1,38 @@
+name: Generate README Plot
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  generate-plot:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.8'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install numpy matplotlib
+    
+    - name: Create images directory
+      run: mkdir -p docs/images
+    
+    - name: Generate plot
+      run: python scripts/generate_readme_plot.py
+    
+    - name: Commit and push if changed
+      run: |
+        git config --global user.name 'GitHub Action'
+        git config --global user.email 'action@github.com'
+        git add docs/images/trajectory_plot.png
+        git commit -m "Update trajectory plot" || exit 0
+        git push
