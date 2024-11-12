@@ -359,21 +359,21 @@ def plot_filter_performance(t: np.ndarray,
     fig, axes = plt.subplots(3, 2, figsize=(15, 12))
     fig.suptitle(f'{filter_name} Performance Analysis')
     
-    # 1. Position errors with 3-sigma bounds
+    # 1. Position errors with 2-sigma bounds
     ax = axes[0, 0]
     pos_err_ugv = filter_states[:, :2] - true_states[:, :2]
     pos_std_ugv = np.sqrt(np.array([filter_covs[i, :2, :2].diagonal() for i in range(len(t))]))
     
     ax.plot(t, pos_err_ugv[:, 0], 'b-', label='East Error')
     ax.plot(t, pos_err_ugv[:, 1], 'r-', label='North Error')
-    ax.plot(t, 3*pos_std_ugv[:, 0], 'b--', alpha=0.5)
-    ax.plot(t, -3*pos_std_ugv[:, 0], 'b--', alpha=0.5)
-    ax.plot(t, 3*pos_std_ugv[:, 1], 'r--', alpha=0.5)
-    ax.plot(t, -3*pos_std_ugv[:, 1], 'r--', alpha=0.5)
+    ax.plot(t, 2*pos_std_ugv[:, 0], 'b--', alpha=0.5)
+    ax.plot(t, -2*pos_std_ugv[:, 0], 'b--', alpha=0.5)
+    ax.plot(t, 2*pos_std_ugv[:, 1], 'r--', alpha=0.5)
+    ax.plot(t, -2*pos_std_ugv[:, 1], 'r--', alpha=0.5)
     ax.grid(True)
     ax.set_xlabel('Time (s)')
     ax.set_ylabel('Error (m)')
-    ax.set_title('UGV Position Errors with 3σ Bounds')
+    ax.set_title('UGV Position Errors with 2σ Bounds')
     ax.legend()
     
     # 2. NEES analysis
@@ -426,12 +426,12 @@ def plot_filter_performance(t: np.ndarray,
     heading_std_ugv = np.sqrt(np.array([filter_covs[i, 2, 2] for i in range(len(t))]))
     
     ax.plot(t, np.rad2deg(heading_err_ugv), 'b-', label='UGV Heading Error')
-    ax.plot(t, 3*np.rad2deg(heading_std_ugv), 'r--', label='3σ Bound')
-    ax.plot(t, -3*np.rad2deg(heading_std_ugv), 'r--')
+    ax.plot(t, 2*np.rad2deg(heading_std_ugv), 'r--', label='2σ Bound')
+    ax.plot(t, -2*np.rad2deg(heading_std_ugv), 'r--')
     ax.grid(True)
     ax.set_xlabel('Time (s)')
     ax.set_ylabel('Error (deg)')
-    ax.set_title('Heading Error with 3σ Bounds')
+    ax.set_title('Heading Error with 2σ Bounds')
     ax.legend()
     
     # 6. Covariance trace
