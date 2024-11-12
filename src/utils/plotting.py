@@ -7,6 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from typing import Tuple
 from scipy.stats import chi2
+from src.core.measurement import measurement_model, measurement_jacobian
 
 def setup_plots() -> Tuple[plt.Figure, np.ndarray]:
     """Create figure and subplots for visualization"""
@@ -299,37 +300,69 @@ def compute_nees(true_states: np.ndarray,
                 filter_states: np.ndarray, 
                 filter_covs: np.ndarray) -> np.ndarray:
     """
-    Compute Normalized Estimation Error Squared (NEES)
+    Compute Normalized Estimation Error Squared (NEES) with proper angle wrapping
     """
-    error = filter_states - true_states
-    nees = np.zeros(len(true_states))
+    N = len(true_states)
+    nees = np.zeros(N)
     
-    for i in range(len(true_states)):
+    for i in range(N):
+        # Compute error with proper angle wrapping
+        error = filter_states[i] - true_states[i]
+        # Wrap angle differences to [-π, π]
+        error[2] = np.mod(error[2] + np.pi, 2*np.pi) - np.pi  # UGV heading
+        error[5] = np.mod(error[5] + np.pi, 2*np.pi) - np.pi  # UAV heading
+        
         try:
-            # Handle potential numerical issues with covariance inverse
-            cov_inv = np.linalg.inv(filter_covs[i])
-            nees[i] = error[i] @ cov_inv @ error[i]
+            # Ensure covariance is well-conditioned
+            min_eig = 1e-10
+            P = filter_covs[i]
+            P = (P + P.T) / 2  # Ensure symmetry
+            eigvals, eigvecs = np.linalg.eigh(P)
+            eigvals = np.maximum(eigvals, min_eig)
+            P_inv = eigvecs @ np.diag(1/eigvals) @ eigvecs.T
+            
+            nees[i] = error @ P_inv @ error
         except np.linalg.LinAlgError:
             nees[i] = np.nan
             
     return nees
 
+def compute_measurement_covs(filter_states: np.ndarray, 
+                           filter_covs: np.ndarray) -> np.ndarray:
+    """
+    Compute measurement covariances for NIS calculation
+    Args:
+        filter_states: Filter state estimates [N, 6]
+        filter_covs: Filter state covariances [N, 6, 6]
+    Returns:
+        measurement_covs: Measurement covariances [N, 5, 5]
+    """
+    N = len(filter_states)
+    measurement_covs = np.zeros((N, 5, 5))
+    
+    for i in range(N):
+        # Get measurement Jacobian at current state
+        H = measurement_jacobian(filter_states[i])
+        # Compute measurement covariance
+        measurement_covs[i] = H @ filter_covs[i] @ H.T
+        
+    return measurement_covs
+
 def plot_filter_performance(t: np.ndarray,
                           true_states: np.ndarray,
                           filter_states: np.ndarray,
                           filter_covs: np.ndarray,
+                          measurements: np.ndarray,
+                          R: np.ndarray,
                           filter_name: str):
-    """
-    Plot comprehensive performance metrics for a single filter
-    """
+    """Plot comprehensive performance metrics for a single filter"""
     fig, axes = plt.subplots(3, 2, figsize=(15, 12))
     fig.suptitle(f'{filter_name} Performance Analysis')
     
     # 1. Position errors with 3-sigma bounds
     ax = axes[0, 0]
-    # UGV position errors
-    pos_err_ugv = filter_states[:, :2] - true_states[:, :2]  # Changed indexing
-    pos_std_ugv = np.sqrt(np.array([filter_covs[i, :2, :2].diagonal() for i in range(len(t))])) # Fixed covariance indexing
+    pos_err_ugv = filter_states[:, :2] - true_states[:, :2]
+    pos_std_ugv = np.sqrt(np.array([filter_covs[i, :2, :2].diagonal() for i in range(len(t))]))
     
     ax.plot(t, pos_err_ugv[:, 0], 'b-', label='East Error')
     ax.plot(t, pos_err_ugv[:, 1], 'r-', label='North Error')
@@ -346,35 +379,51 @@ def plot_filter_performance(t: np.ndarray,
     # 2. NEES analysis
     ax = axes[0, 1]
     nees = compute_nees(true_states, filter_states, filter_covs)
-    chi2_95 = chi2.ppf(0.95, df=6)  # 95% confidence bound for 6 DoF
-    
+    chi2_95 = chi2.ppf(0.95, df=6)
+
     ax.plot(t, nees, 'k-', label='NEES')
-    ax.axhline(y=chi2_95, color='r', linestyle='--', 
-               label='95% Confidence Bound')
+    ax.axhline(y=chi2_95, color='r', linestyle='--', label='95% Bound')
+    ax.set_ylim([0, max(chi2_95 * 2, np.nanpercentile(nees, 95))])  # Ensure bound is visible
     ax.grid(True)
     ax.set_xlabel('Time (s)')
     ax.set_ylabel('NEES')
-    ax.set_title('Normalized Estimation Error Squared')
+    ax.set_title('NEES')  # Changed from spelled out version
     ax.legend()
     
-    # 3. Innovation consistency
+    # 3. NIS analysis
     ax = axes[1, 0]
-    innovation_rms = np.sqrt(np.mean(pos_err_ugv**2, axis=1))
-    predicted_std = np.sqrt(np.mean(pos_std_ugv**2, axis=1))
+    nis = compute_nis(measurements, filter_states, filter_covs, R)
+    chi2_95_nis = chi2.ppf(0.95, df=5)
     
-    ax.plot(t, innovation_rms, 'b-', label='RMS Error')
-    ax.plot(t, 3*predicted_std, 'r--', label='3σ Predicted')
+    # Plot NIS time history
+    ax.plot(t, nis, 'b-', label='NIS')
+    ax.axhline(y=chi2_95_nis, color='r', linestyle='--', label='95% Bound')
+    ax.set_ylim([0, min(30, np.nanpercentile(nis, 99))])
     ax.grid(True)
     ax.set_xlabel('Time (s)')
-    ax.set_ylabel('Error (m)')
-    ax.set_title('Innovation Consistency Check')
+    ax.set_ylabel('NIS')
+    ax.set_title('Normalized Innovation Squared')
     ax.legend()
     
-    # 4. Heading error analysis
+    # 4. NIS distribution
     ax = axes[1, 1]
-    heading_err_ugv = np.abs(np.mod(filter_states[:, 2] - true_states[:, 2] + np.pi, 
-                                   2*np.pi) - np.pi)
-    heading_std_ugv = np.sqrt(np.array([filter_covs[i, 2, 2] for i in range(len(t))])) # Fixed covariance indexing
+    valid_nis = nis[~np.isnan(nis)]
+    ax.hist(valid_nis, bins=30, density=True, alpha=0.6, color='b', label='Empirical')
+    
+    # Plot theoretical chi-square distribution
+    x = np.linspace(0, chi2_95_nis * 1.5, 100)
+    ax.plot(x, chi2.pdf(x, df=5), 'r-', label='χ²(5) PDF')
+    ax.axvline(x=chi2_95_nis, color='r', linestyle='--', label='95% Bound')
+    ax.grid(True)
+    ax.set_xlabel('NIS')
+    ax.set_ylabel('Density')
+    ax.set_title('NIS Distribution')
+    ax.legend()
+    
+    # 5. Heading error analysis
+    ax = axes[2, 0]
+    heading_err_ugv = np.mod(filter_states[:, 2] - true_states[:, 2] + np.pi, 2*np.pi) - np.pi
+    heading_std_ugv = np.sqrt(np.array([filter_covs[i, 2, 2] for i in range(len(t))]))
     
     ax.plot(t, np.rad2deg(heading_err_ugv), 'b-', label='UGV Heading Error')
     ax.plot(t, 3*np.rad2deg(heading_std_ugv), 'r--', label='3σ Bound')
@@ -385,18 +434,9 @@ def plot_filter_performance(t: np.ndarray,
     ax.set_title('Heading Error with 3σ Bounds')
     ax.legend()
     
-    # 5. State estimation consistency
-    ax = axes[2, 0]
-    state_err_norm = np.linalg.norm(filter_states - true_states, axis=1)
-    ax.plot(t, state_err_norm, 'b-')
-    ax.grid(True)
-    ax.set_xlabel('Time (s)')
-    ax.set_ylabel('Error Norm')
-    ax.set_title('Total State Error Norm')
-    
-    # 6. Covariance trace analysis
+    # 6. Covariance trace
     ax = axes[2, 1]
-    cov_trace = np.array([np.trace(filter_covs[i]) for i in range(len(t))]) # Fixed covariance indexing
+    cov_trace = np.array([np.trace(P) for P in filter_covs])
     ax.plot(t, cov_trace, 'b-')
     ax.grid(True)
     ax.set_xlabel('Time (s)')
@@ -405,3 +445,37 @@ def plot_filter_performance(t: np.ndarray,
     
     plt.tight_layout()
     plt.show()
+
+def compute_nis(measurements: np.ndarray,
+                filter_states: np.ndarray,
+                filter_covs: np.ndarray,
+                R: np.ndarray) -> np.ndarray:
+    """
+    Compute Normalized Innovation Squared (NIS)
+    """
+    N = len(measurements)
+    nis = np.zeros(N)
+    
+    for i in range(N):
+        # Compute predicted measurement
+        pred_meas = measurement_model(filter_states[i], np.zeros(5))
+        
+        # Innovation with proper angle wrapping
+        innovation = measurements[i] - pred_meas
+        innovation[0] = np.mod(innovation[0] + np.pi, 2*np.pi) - np.pi  # azimuth_g
+        innovation[2] = np.mod(innovation[2] + np.pi, 2*np.pi) - np.pi  # azimuth_a
+        
+        # Compute measurement Jacobian
+        H = measurement_jacobian(filter_states[i])
+        
+        # Innovation covariance
+        S = H @ filter_covs[i] @ H.T + R
+        
+        try:
+            # Ensure S is well-conditioned
+            S = (S + S.T) / 2
+            nis[i] = innovation @ np.linalg.solve(S, innovation)
+        except np.linalg.LinAlgError:
+            nis[i] = np.nan
+    
+    return nis

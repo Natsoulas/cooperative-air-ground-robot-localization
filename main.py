@@ -10,6 +10,8 @@ from src.utils.noise import NoiseGenerator
 from src.core.measurement import measurement_model
 from src.utils.plotting import plot_simulation_results, plot_estimation_results, plot_filter_differences, plot_filter_performance
 from src.core.filter import LinearizedKalmanFilter, ExtendedKalmanFilter
+from src.utils.analysis import perform_nees_hypothesis_test
+from src.utils.plotting import compute_nees
 
 def control_input(t: float) -> np.ndarray:
     """Generate control inputs for both vehicles"""
@@ -70,22 +72,22 @@ def main():
     
     # Initialize Kalman filters with tuned parameters
     P0 = np.diag([
-        0.5,  # xi_g position
-        0.5,  # eta_g position
-        0.1,  # theta_g heading (reduced uncertainty in angles)
-        0.5,  # xi_a position
-        0.5,  # eta_a position
+        1.0,  # xi_g position
+        1.0,  # eta_g position
+        0.1,  # theta_g heading
+        1.0,  # xi_a position
+        1.0,  # eta_a position
         0.1   # theta_a heading
     ]) * COVARIANCE_INIT_SCALE
     
     # Adjust process noise covariance
     Q = np.diag([
-        0.5,  # Increased position noise
-        0.5,
-        0.2,  # Increased angle noise
-        0.5,
-        0.5,
-        0.2
+        0.1,  # Reduced position noise
+        0.1,
+        0.05,  # Reduced angle noise
+        0.1,
+        0.1,
+        0.05
     ])**2
     
     # Keep measurement noise as is
@@ -120,17 +122,40 @@ def main():
     # Original truth and measurement plots
     plot_simulation_results(t, true_states, measurements, controls)
     
-    # Additional estimation results plots
+    # State estimation results plots
     plot_estimation_results(t, true_states, lkf_states, ekf_states, 
                           lkf_covs, ekf_covs, measurements)
     
-    # Plot filter differences analysis
-    plot_filter_differences(t, true_states, lkf_states, ekf_states,
-                          lkf_covs, ekf_covs)
+    # Plot individual filter performance analysis:
+
+    # LKF Performance
+    plot_filter_performance(t, true_states, lkf_states, lkf_covs, 
+                          measurements, R, "LKF")
     
-    # Plot filter performance analysis
-    plot_filter_performance(t, true_states, lkf_states, lkf_covs, "LKF")
-    plot_filter_performance(t, true_states, ekf_states, ekf_covs, "EKF")
+    # EKF Performance
+    plot_filter_performance(t, true_states, ekf_states, ekf_covs, 
+                          measurements, R, "EKF")
+    
+    # Compute NEES values
+    lkf_nees = compute_nees(true_states, lkf_states, lkf_covs)
+    ekf_nees = compute_nees(true_states, ekf_states, ekf_covs)
+    
+    # Perform hypothesis tests
+    lkf_results = perform_nees_hypothesis_test(lkf_nees)
+    ekf_results = perform_nees_hypothesis_test(ekf_nees)
+    
+    # Print results
+    print("\nLinearized Kalman Filter NEES Test Results:")
+    print(f"Average NEES: {lkf_results['average_nees']:.2f}")
+    print(f"Expected bounds: [{lkf_results['lower_bound']:.2f}, {lkf_results['upper_bound']:.2f}]")
+    print(f"Percent in bounds: {lkf_results['percent_in_bounds']:.1f}%")
+    print(f"Filter is {'consistent' if lkf_results['filter_consistent'] else 'inconsistent'}")
+    
+    print("\nExtended Kalman Filter NEES Test Results:")
+    print(f"Average NEES: {ekf_results['average_nees']:.2f}")
+    print(f"Expected bounds: [{ekf_results['lower_bound']:.2f}, {ekf_results['upper_bound']:.2f}]")
+    print(f"Percent in bounds: {ekf_results['percent_in_bounds']:.1f}%")
+    print(f"Filter is {'consistent' if ekf_results['filter_consistent'] else 'inconsistent'}")
 
 if __name__ == "__main__":
     main()
