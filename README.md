@@ -7,6 +7,9 @@ See the [System Description](docs/system_description.md) for details about the p
 ## Vehicle Trajectories
 ![Vehicle Trajectories](docs/images/trajectory_plot.png)
 
+## Kalman Filter Designs
+See the [Kalman Filter Designs](docs/kalman_filter_designs.md) for details about the Kalman filter designs.
+
 ## Running the Code
 See the [Running the Code](docs/running_the_code.md) for details about how to run the code.
 
