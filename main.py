@@ -8,7 +8,7 @@ from src.utils.constants import *
 from src.truth import TruthSimulator
 from src.utils.noise import NoiseGenerator
 from src.core.measurement import measurement_model
-from src.utils.plotting import plot_simulation_results, plot_estimation_results, plot_filter_differences
+from src.utils.plotting import plot_simulation_results, plot_estimation_results, plot_filter_differences, plot_filter_performance
 from src.core.filter import LinearizedKalmanFilter, ExtendedKalmanFilter
 
 def control_input(t: float) -> np.ndarray:
@@ -127,6 +127,10 @@ def main():
     # Plot filter differences analysis
     plot_filter_differences(t, true_states, lkf_states, ekf_states,
                           lkf_covs, ekf_covs)
+    
+    # Plot filter performance analysis
+    plot_filter_performance(t, true_states, lkf_states, lkf_covs, "LKF")
+    plot_filter_performance(t, true_states, ekf_states, ekf_covs, "EKF")
 
 if __name__ == "__main__":
     main()

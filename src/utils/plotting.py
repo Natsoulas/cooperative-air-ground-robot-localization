@@ -6,6 +6,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from typing import Tuple
+from scipy.stats import chi2
 
 def setup_plots() -> Tuple[plt.Figure, np.ndarray]:
     """Create figure and subplots for visualization"""
@@ -295,21 +296,112 @@ def plot_filter_differences(t: np.ndarray,
     plt.show()
 
 def compute_nees(true_states: np.ndarray, 
-                est_states: np.ndarray, 
-                covs: np.ndarray) -> np.ndarray:
-    """Compute Normalized Estimation Error Squared"""
-    error = est_states - true_states
+                filter_states: np.ndarray, 
+                filter_covs: np.ndarray) -> np.ndarray:
+    """
+    Compute Normalized Estimation Error Squared (NEES)
+    """
+    error = filter_states - true_states
     nees = np.zeros(len(true_states))
     
     for i in range(len(true_states)):
-        # Handle angle wrapping for heading errors
-        error[i, 2] = np.mod(error[i, 2] + np.pi, 2*np.pi) - np.pi  # UGV heading
-        error[i, 5] = np.mod(error[i, 5] + np.pi, 2*np.pi) - np.pi  # UAV heading
-        
-        # Compute NEES
         try:
-            nees[i] = error[i] @ np.linalg.inv(covs[i]) @ error[i]
+            # Handle potential numerical issues with covariance inverse
+            cov_inv = np.linalg.inv(filter_covs[i])
+            nees[i] = error[i] @ cov_inv @ error[i]
         except np.linalg.LinAlgError:
-            nees[i] = float('nan')
-    
+            nees[i] = np.nan
+            
     return nees
+
+def plot_filter_performance(t: np.ndarray,
+                          true_states: np.ndarray,
+                          filter_states: np.ndarray,
+                          filter_covs: np.ndarray,
+                          filter_name: str):
+    """
+    Plot comprehensive performance metrics for a single filter
+    """
+    fig, axes = plt.subplots(3, 2, figsize=(15, 12))
+    fig.suptitle(f'{filter_name} Performance Analysis')
+    
+    # 1. Position errors with 3-sigma bounds
+    ax = axes[0, 0]
+    # UGV position errors
+    pos_err_ugv = filter_states[:, :2] - true_states[:, :2]  # Changed indexing
+    pos_std_ugv = np.sqrt(np.array([filter_covs[i, :2, :2].diagonal() for i in range(len(t))])) # Fixed covariance indexing
+    
+    ax.plot(t, pos_err_ugv[:, 0], 'b-', label='East Error')
+    ax.plot(t, pos_err_ugv[:, 1], 'r-', label='North Error')
+    ax.plot(t, 3*pos_std_ugv[:, 0], 'b--', alpha=0.5)
+    ax.plot(t, -3*pos_std_ugv[:, 0], 'b--', alpha=0.5)
+    ax.plot(t, 3*pos_std_ugv[:, 1], 'r--', alpha=0.5)
+    ax.plot(t, -3*pos_std_ugv[:, 1], 'r--', alpha=0.5)
+    ax.grid(True)
+    ax.set_xlabel('Time (s)')
+    ax.set_ylabel('Error (m)')
+    ax.set_title('UGV Position Errors with 3σ Bounds')
+    ax.legend()
+    
+    # 2. NEES analysis
+    ax = axes[0, 1]
+    nees = compute_nees(true_states, filter_states, filter_covs)
+    chi2_95 = chi2.ppf(0.95, df=6)  # 95% confidence bound for 6 DoF
+    
+    ax.plot(t, nees, 'k-', label='NEES')
+    ax.axhline(y=chi2_95, color='r', linestyle='--', 
+               label='95% Confidence Bound')
+    ax.grid(True)
+    ax.set_xlabel('Time (s)')
+    ax.set_ylabel('NEES')
+    ax.set_title('Normalized Estimation Error Squared')
+    ax.legend()
+    
+    # 3. Innovation consistency
+    ax = axes[1, 0]
+    innovation_rms = np.sqrt(np.mean(pos_err_ugv**2, axis=1))
+    predicted_std = np.sqrt(np.mean(pos_std_ugv**2, axis=1))
+    
+    ax.plot(t, innovation_rms, 'b-', label='RMS Error')
+    ax.plot(t, 3*predicted_std, 'r--', label='3σ Predicted')
+    ax.grid(True)
+    ax.set_xlabel('Time (s)')
+    ax.set_ylabel('Error (m)')
+    ax.set_title('Innovation Consistency Check')
+    ax.legend()
+    
+    # 4. Heading error analysis
+    ax = axes[1, 1]
+    heading_err_ugv = np.abs(np.mod(filter_states[:, 2] - true_states[:, 2] + np.pi, 
+                                   2*np.pi) - np.pi)
+    heading_std_ugv = np.sqrt(np.array([filter_covs[i, 2, 2] for i in range(len(t))])) # Fixed covariance indexing
+    
+    ax.plot(t, np.rad2deg(heading_err_ugv), 'b-', label='UGV Heading Error')
+    ax.plot(t, 3*np.rad2deg(heading_std_ugv), 'r--', label='3σ Bound')
+    ax.plot(t, -3*np.rad2deg(heading_std_ugv), 'r--')
+    ax.grid(True)
+    ax.set_xlabel('Time (s)')
+    ax.set_ylabel('Error (deg)')
+    ax.set_title('Heading Error with 3σ Bounds')
+    ax.legend()
+    
+    # 5. State estimation consistency
+    ax = axes[2, 0]
+    state_err_norm = np.linalg.norm(filter_states - true_states, axis=1)
+    ax.plot(t, state_err_norm, 'b-')
+    ax.grid(True)
+    ax.set_xlabel('Time (s)')
+    ax.set_ylabel('Error Norm')
+    ax.set_title('Total State Error Norm')
+    
+    # 6. Covariance trace analysis
+    ax = axes[2, 1]
+    cov_trace = np.array([np.trace(filter_covs[i]) for i in range(len(t))]) # Fixed covariance indexing
+    ax.plot(t, cov_trace, 'b-')
+    ax.grid(True)
+    ax.set_xlabel('Time (s)')
+    ax.set_ylabel('Trace')
+    ax.set_title('Covariance Matrix Trace')
+    
+    plt.tight_layout()
+    plt.show()
