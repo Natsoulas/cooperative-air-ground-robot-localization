@@ -13,15 +13,15 @@ This document describes two Kalman filter implementations for UGV-UAV cooperativ
 ## Key Implementation Differences
 
 ### Linearization Strategy
-- **LKF (Open-Loop)**: Linearizes around a pre-defined nominal trajectory
-  * Nominal trajectory satisfies nonlinear system ODEs
+- **LKF (Online)**: Linearizes around online-computed nominal trajectory
+  * Nominal trajectory computed using actual controls
   * Linearization points independent of state estimates
-  * Can be computed offline or online without feedback from estimator
+  * Uses RK4 integration for accurate nominal propagation
   * Example from implementation:
     ```python
-    # Pre-compute nominal trajectory Jacobian (should remain fixed)
-    self.F_nominal = system_jacobian(self.x_nominal, self.nominal_controls, self.L)
-    self.H_nominal = measurement_jacobian(self.x_nominal)
+    # Compute Jacobians at new nominal point using actual controls
+    F = system_jacobian(next_nominal, controls, self.L)
+    H = measurement_jacobian(next_nominal)
     ```
 
 - **EKF (Closed-Loop)**: Linearizes around current state estimate
@@ -29,36 +29,43 @@ This document describes two Kalman filter implementations for UGV-UAV cooperativ
   * Must recompute Jacobians at each step
   * Example from implementation:
     ```python
-    # Compute Jacobian at current state
+    # Compute current Jacobian
     F = system_jacobian(self.x, controls, self.L)
     ```
 
 ### State Representation
 - **LKF**: 
-  * x_nominal: Nominal trajectory
+  * x_nominal: Online nominal trajectory with sliding window
   * δx: Error state
   * x = x_nominal + δx
 - **EKF**: Single state vector x
 
 ### Computational Efficiency
-- **LKF**: More efficient (fixed Jacobians)
-- **EKF**: More computationally intensive (continuous Jacobian updates)
+- **LKF**: Moderate efficiency (online nominal computation, sliding window of Jacobians)
+- **EKF**: Similar computational cost (continuous Jacobian updates)
 
 ### Performance Characteristics
 - **LKF**:
-  * More stable with good nominal trajectory
-  * Better for small deviations
+  * Maintains separation between nominal and error dynamics
+  * Better numerical stability through error-state formulation
   * Linearization errors independent of estimates
-  * Can adjust nominal trajectory without affecting stability
+  * Uses sliding window for memory efficiency
 - **EKF**:
   * More adaptive to large deviations
   * Estimation errors affect future linearizations
-  * Potential for error coupling and divergence
-  * Automatically adapts but may suffer from estimate-dependent linearization errors
+  * Uses eigenvalue bounds for numerical stability
+  * Direct state estimation without error separation
 
-### Error Propagation
-- **LKF**: Linearization errors are independent of estimation errors
-- **EKF**: Linearization and estimation errors are coupled, potentially leading to divergence
+### Numerical Stability Features
+- **LKF**:
+  * Sliding window of nominal points and Jacobians
+  * Joseph form for covariance updates
+  * Angle normalization for both nominal and error states
+- **EKF**:
+  * Explicit covariance conditioning
+  * SVD-based innovation computation
+  * Eigenvalue bounds for numerical stability
+  * Robust angle normalization
 
 ## Implementation Details
 See the source code for detailed implementation:
@@ -69,30 +76,36 @@ See the source code for detailed implementation:
 
 ### Linearized Kalman Filter
 1. **Initialization**
-   - Set initial nominal trajectory
+   - Initialize nominal trajectory storage
    - Initialize error state to zero
-   - Pre-compute system and measurement Jacobians
+   - Set up sliding window parameters
 
 2. **Prediction**
-   - Use fixed nominal Jacobian for state transition
-   - Propagate nominal trajectory with nominal controls
+   - Update nominal trajectory using RK4 integration
+   - Compute new Jacobians at nominal point
    - Propagate error state and covariance
+   - Maintain sliding window of nominal points
 
 3. **Update**
-   - Use fixed nominal measurement Jacobian
+   - Use latest nominal measurement Jacobian
    - Compute innovation using nominal state
    - Update error state and covariance
+   - Maintain numerical stability through Joseph form
 
 ### Extended Kalman Filter
 1. **Initialization**
    - Set initial state estimate
    - Initialize state covariance
+   - Set numerical stability parameters
 
 2. **Prediction**
-   - Compute current Jacobian
-   - Predict state using nonlinear model
-   - Propagate covariance
+   - Use multiple integration substeps
+   - Compute Jacobians at current estimate
+   - Predict state using RK4 integration
+   - Ensure covariance validity
 
 3. **Update**
-   - Compute current measurement Jacobian
-   - Update state and covariance using nonlinear measurement model
+   - Robust innovation computation using SVD
+   - Update state and covariance with numerical safeguards
+   - Handle potential numerical failures gracefully
+   - Maintain covariance conditioning

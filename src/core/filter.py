@@ -66,61 +66,117 @@ def measurement_jacobian(state: np.ndarray) -> np.ndarray:
 
 class LinearizedKalmanFilter:
     def __init__(self, x0: np.ndarray, P0: np.ndarray, Q: np.ndarray, R: np.ndarray, L: float):
-        self.x = x0.copy()  # State estimate
-        self.x_nominal = x0.copy()  # Nominal trajectory
-        self.delta_x = np.zeros_like(x0)  # Error state
-        self.P = P0  # Error state covariance
-        self.Q = Q   # Process noise covariance
-        self.R = R   # Measurement noise covariance
-        self.L = L   # Vehicle parameter
+        self.x = x0.copy()
+        self.x_nominal = x0.copy()
+        self.delta_x = np.zeros_like(x0)
+        self.P = P0
+        self.Q = Q
+        self.R = R
+        self.L = L
         
-        # Get initial controls
-        from src.utils.constants import V_G_0, PHI_G_0, V_A_0, OMEGA_A_0
-        self.nominal_controls = np.array([V_G_0, PHI_G_0, V_A_0, OMEGA_A_0])
+        # Initialize nominal trajectory storage
+        self.nominal_window_size = 20
+        self.nominal_points = [x0.copy()]
+        self.F_nominals = []
+        self.H_nominals = []
         
-        # Pre-compute nominal trajectory Jacobian (should remain fixed)
-        self.F_nominal = system_jacobian(self.x_nominal, self.nominal_controls, self.L)
-        self.H_nominal = measurement_jacobian(self.x_nominal)
+        # Initialize first Jacobians with zero controls
+        F = system_jacobian(x0, np.zeros(4), self.L)
+        H = measurement_jacobian(x0)
+        self.F_nominals.append(F)
+        self.H_nominals.append(H)
+        
+    def update_nominal_trajectory(self, controls: np.ndarray, dt: float):
+        """Improved nominal trajectory propagation using actual controls"""
+        current_nominal = self.nominal_points[-1]
+        
+        # Use multiple integration steps for better accuracy
+        num_substeps = 4
+        dt_sub = dt / num_substeps
+        next_nominal = current_nominal.copy()
+        
+        for _ in range(num_substeps):
+            # RK4 integration with actual controls
+            noise = np.zeros(6)
+            k1 = combined_dynamics(next_nominal, controls, noise, self.L)
+            k2 = combined_dynamics(next_nominal + dt_sub/2 * k1, controls, noise, self.L)
+            k3 = combined_dynamics(next_nominal + dt_sub/2 * k2, controls, noise, self.L)
+            k4 = combined_dynamics(next_nominal + dt_sub * k3, controls, noise, self.L)
+            
+            next_nominal = next_nominal + dt_sub/6 * (k1 + 2*k2 + 2*k3 + k4)
+            
+            # Normalize angles in nominal trajectory
+            next_nominal[2] = np.mod(next_nominal[2] + np.pi, 2*np.pi) - np.pi
+            next_nominal[5] = np.mod(next_nominal[5] + np.pi, 2*np.pi) - np.pi
+        
+        # Compute Jacobians at new nominal point using actual controls
+        F = system_jacobian(next_nominal, controls, self.L)
+        H = measurement_jacobian(next_nominal)
+        
+        # Update storage with new point
+        self.nominal_points.append(next_nominal)
+        self.F_nominals.append(F)
+        self.H_nominals.append(H)
+        
+        if len(self.nominal_points) > self.nominal_window_size:
+            self.nominal_points.pop(0)
+            self.F_nominals.pop(0)
+            self.H_nominals.pop(0)
+        
+        self.x_nominal = next_nominal
         
     def predict(self, controls: np.ndarray, dt: float):
-        # Use fixed nominal trajectory Jacobian
-        F_d = np.eye(6) + self.F_nominal * dt
-        Q_d = self.Q * dt
+        # Update nominal trajectory using actual controls
+        self.update_nominal_trajectory(controls, dt)
         
-        # Propagate nominal trajectory using nominal controls
-        noise = np.zeros(6)
-        dx_nominal = combined_dynamics(self.x_nominal, self.nominal_controls, noise, self.L)
-        self.x_nominal = self.x_nominal + dx_nominal * dt
+        # Use latest nominal trajectory Jacobian
+        F_d = np.eye(6) + self.F_nominals[-1] * dt
+        Q_d = self.Q * dt
         
         # Propagate error state
         self.delta_x = F_d @ self.delta_x
         
+        # Update error covariance with Joseph form for better numerical stability
+        self.P = F_d @ self.P @ F_d.T + Q_d
+        
         # Update full state estimate
         self.x = self.x_nominal + self.delta_x
         
-        # Update error covariance
-        self.P = F_d @ self.P @ F_d.T + Q_d
+        # Normalize angles in state estimate
+        self.x[2] = np.mod(self.x[2] + np.pi, 2*np.pi) - np.pi
+        self.x[5] = np.mod(self.x[5] + np.pi, 2*np.pi) - np.pi
         
     def update(self, measurement: np.ndarray):
-        # Use fixed nominal measurement Jacobian
-        H = self.H_nominal
+        # Use latest nominal measurement Jacobian
+        H = self.H_nominals[-1]
         
-        # Compute expected measurement using nominal trajectory
+        # Compute expected measurement using current nominal point
         expected_meas = measurement_model(self.x_nominal, np.zeros(5))
         
         # Compute innovation
         innovation = measurement - expected_meas - H @ self.delta_x
         
-        # Compute Kalman gain
+        # Normalize angle innovations
+        innovation[0] = np.mod(innovation[0] + np.pi, 2*np.pi) - np.pi  # UGV azimuth
+        innovation[2] = np.mod(innovation[2] + np.pi, 2*np.pi) - np.pi  # UAV azimuth
+        
+        # Compute Kalman gain with better numerical stability
         S = H @ self.P @ H.T + self.R
         K = self.P @ H.T @ np.linalg.inv(S)
         
-        # Update error state and covariance
+        # Update error state
         self.delta_x = self.delta_x + K @ innovation
-        self.P = (np.eye(6) - K @ H) @ self.P
+        
+        # Update covariance using Joseph form
+        I_KH = np.eye(6) - K @ H
+        self.P = I_KH @ self.P @ I_KH.T + K @ self.R @ K.T
         
         # Update full state estimate
         self.x = self.x_nominal + self.delta_x
+        
+        # Normalize angles in state estimate
+        self.x[2] = np.mod(self.x[2] + np.pi, 2*np.pi) - np.pi
+        self.x[5] = np.mod(self.x[5] + np.pi, 2*np.pi) - np.pi
 
 class ExtendedKalmanFilter:
     def __init__(self, x0: np.ndarray, P0: np.ndarray, Q: np.ndarray, R: np.ndarray, L: float):
@@ -130,34 +186,96 @@ class ExtendedKalmanFilter:
         self.R = R   # Measurement noise covariance
         self.L = L   # Vehicle parameter
         
+        # Add numerical stability parameters
+        self.min_cov_eigenval = 1e-10
+        self.max_cov_eigenval = 1e6
+        
+    def normalize_state(self):
+        """Normalize angle states to [-π, π]"""
+        self.x[2] = np.mod(self.x[2] + np.pi, 2*np.pi) - np.pi  # UGV heading
+        self.x[5] = np.mod(self.x[5] + np.pi, 2*np.pi) - np.pi  # UAV heading
+        
+    def ensure_covariance_validity(self):
+        """Ensure covariance matrix stays well-conditioned"""
+        # Symmetric part
+        self.P = (self.P + self.P.T) / 2
+        
+        # Eigenvalue bounds
+        eigvals, eigvecs = np.linalg.eigh(self.P)
+        eigvals = np.clip(eigvals, self.min_cov_eigenval, self.max_cov_eigenval)
+        self.P = eigvecs @ np.diag(eigvals) @ eigvecs.T
+        
     def predict(self, controls: np.ndarray, dt: float):
-        # Compute Jacobian at current state
-        F = system_jacobian(self.x, controls, self.L)
+        """Improved prediction step with multiple integration substeps"""
+        # Use multiple integration steps for better accuracy
+        num_substeps = 4
+        dt_sub = dt / num_substeps
         
-        # Discretize system
-        F_d = np.eye(6) + F * dt
-        Q_d = self.Q * dt
-        
-        # Predict state using full nonlinear model
-        noise = np.zeros(6)
-        dx = combined_dynamics(self.x, controls, noise, self.L)
-        self.x = self.x + dx * dt
-        
-        # Update covariance
-        self.P = F_d @ self.P @ F_d.T + Q_d
-        
+        for _ in range(num_substeps):
+            # Compute current Jacobian
+            F = system_jacobian(self.x, controls, self.L)
+            
+            # Discretize system for small timestep
+            F_d = np.eye(6) + F * dt_sub
+            Q_d = self.Q * dt_sub
+            
+            # Predict state using RK4 integration
+            k1 = combined_dynamics(self.x, controls, np.zeros(6), self.L)
+            k2 = combined_dynamics(self.x + dt_sub/2 * k1, controls, np.zeros(6), self.L)
+            k3 = combined_dynamics(self.x + dt_sub/2 * k2, controls, np.zeros(6), self.L)
+            k4 = combined_dynamics(self.x + dt_sub * k3, controls, np.zeros(6), self.L)
+            
+            self.x = self.x + dt_sub/6 * (k1 + 2*k2 + 2*k3 + k4)
+            
+            # Update covariance using Joseph form
+            self.P = F_d @ self.P @ F_d.T + Q_d
+            
+            # Normalize angles and ensure covariance validity
+            self.normalize_state()
+            self.ensure_covariance_validity()
+    
     def update(self, measurement: np.ndarray):
+        """Improved update step with robust innovation handling"""
         # Get measurement Jacobian
         H = measurement_jacobian(self.x)
         
-        # Compute Kalman gain
-        S = H @ self.P @ H.T + self.R
-        K = self.P @ H.T @ np.linalg.inv(S)
-        
-        # Compute expected measurement using full nonlinear model
+        # Compute expected measurement
         expected_meas = measurement_model(self.x, np.zeros(5))
         
-        # Update state and covariance
+        # Compute innovation with angle wrapping
         innovation = measurement - expected_meas
-        self.x = self.x + K @ innovation
-        self.P = (np.eye(6) - K @ H) @ self.P
+        
+        # Normalize angle innovations
+        innovation[0] = np.mod(innovation[0] + np.pi, 2*np.pi) - np.pi  # UGV azimuth
+        innovation[2] = np.mod(innovation[2] + np.pi, 2*np.pi) - np.pi  # UAV azimuth
+        
+        # Robust innovation covariance
+        S = H @ self.P @ H.T + self.R
+        
+        # Ensure S is well-conditioned
+        S = (S + S.T) / 2  # Ensure symmetry
+        
+        try:
+            # Use SVD for more stable inverse
+            U, s, Vh = np.linalg.svd(S)
+            s_inv = np.where(s > 1e-10, 1/s, 0)
+            S_inv = (Vh.T * s_inv) @ U.T
+            
+            # Compute Kalman gain
+            K = self.P @ H.T @ S_inv
+            
+            # Update state
+            self.x = self.x + K @ innovation
+            
+            # Update covariance using Joseph form
+            I_KH = np.eye(6) - K @ H
+            self.P = I_KH @ self.P @ I_KH.T + K @ self.R @ K.T
+            
+        except np.linalg.LinAlgError:
+            # If SVD fails, skip update
+            print("Warning: Update step failed due to numerical issues")
+            return
+        
+        # Normalize angles and ensure covariance validity
+        self.normalize_state()
+        self.ensure_covariance_validity()

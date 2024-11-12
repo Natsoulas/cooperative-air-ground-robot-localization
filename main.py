@@ -63,10 +63,28 @@ def main():
         measurements.append(meas)
     measurements = np.array(measurements)
     
-    # Initialize Kalman filters
-    P0 = np.diag([1.0] * 6)  # Initial state covariance
-    Q = np.diag(state_noise_std**2)  # Process noise covariance
-    R = np.diag(meas_noise_std**2)   # Measurement noise covariance
+    # Initialize Kalman filters with tuned parameters
+    P0 = np.diag([
+        0.5,  # xi_g position
+        0.5,  # eta_g position
+        0.1,  # theta_g heading (reduced uncertainty in angles)
+        0.5,  # xi_a position
+        0.5,  # eta_a position
+        0.1   # theta_a heading
+    ]) * COVARIANCE_INIT_SCALE
+    
+    # Adjust process noise covariance
+    Q = np.diag([
+        0.5,  # Increased position noise
+        0.5,
+        0.2,  # Increased angle noise
+        0.5,
+        0.5,
+        0.2
+    ])**2
+    
+    # Keep measurement noise as is
+    R = np.diag(meas_noise_std**2)
     
     lkf = LinearizedKalmanFilter(x0.copy(), P0.copy(), Q.copy(), R.copy(), L)
     ekf = ExtendedKalmanFilter(x0.copy(), P0.copy(), Q.copy(), R.copy(), L)
