@@ -1,5 +1,6 @@
 # cooperative-air-ground-robot-localization
 CU Boulder ASEN 5044 Statistical Estimation of Dynamical Systems Final Project
+By Arshaun Niko Anshul
 
 ## System Description
 See the [System Description](docs/system_description.md) for details about the project setup and implementation.
