@@ -60,11 +60,11 @@ def measurement_jacobian(state: np.ndarray) -> np.ndarray:
     H = np.zeros((5, 6))
     
     # Derivatives for azimuth_g measurement
-    H[0, 0] = -delta_eta / r2  # d(azimuth_g)/d(xi_g)
-    H[0, 1] = delta_xi / r2    # d(azimuth_g)/d(eta_g)
+    H[0, 0] = delta_eta / r2  # d(azimuth_g)/d(xi_g)
+    H[0, 1] = -delta_xi / r2    # d(azimuth_g)/d(eta_g)
     H[0, 2] = -1               # d(azimuth_g)/d(theta_g)
-    H[0, 3] = delta_eta / r2   # d(azimuth_g)/d(xi_a)
-    H[0, 4] = -delta_xi / r2   # d(azimuth_g)/d(eta_a)
+    H[0, 3] = -delta_eta / r2   # d(azimuth_g)/d(xi_a)
+    H[0, 4] = delta_xi / r2   # d(azimuth_g)/d(eta_a)
     
     # Derivatives for range measurement
     H[1, 0] = -delta_xi / r    # d(range)/d(xi_g)

@@ -31,9 +31,8 @@ V_A_0 = 12.0  # initial velocity (m/s)
 OMEGA_A_0 = np.pi/25  # initial turn rate (rad/s)
 
 # Simulation Parameters
-DT = 0.01  # Reduced from 0.01 to 0.005 for better integration accuracy
-T_FINAL = 60.0
+DT = 0.1
+T_FINAL = 100.0
 
 # Filter Parameters (new)
 LKF_WINDOW_SIZE = 20  # Increased window size for nominal trajectory
-COVARIANCE_INIT_SCALE = 0.5  # Smaller initial uncertainty

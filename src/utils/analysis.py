@@ -52,3 +52,44 @@ def perform_nees_hypothesis_test(nees_values: np.ndarray, alpha: float = 0.05, n
     }
     
     return results 
+
+def perform_nis_hypothesis_test(nis_values: np.ndarray, alpha: float = 0.05, n_measurements: int = 5) -> Dict:
+    """
+    Perform NIS Chi-square hypothesis test
+    
+    Args:
+        nis_values: Array of NIS values
+        alpha: Significance level (default 0.05 for 95% confidence)
+        n_measurements: Number of measurements (default 5 for our system)
+        
+    Returns:
+        Dictionary containing test results
+    """
+    # Remove any NaN values
+    valid_nis = nis_values[~np.isnan(nis_values)]
+    N = len(valid_nis)
+    
+    # Compute average NIS
+    avg_nis = np.mean(valid_nis)
+    
+    # Chi-square test bounds for measurement dimension
+    dof = n_measurements
+    
+    # Lower and upper bounds for individual NIS values
+    r1 = chi2.ppf(alpha/2, dof)
+    r2 = chi2.ppf(1 - alpha/2, dof)
+    
+    # Percentage of samples within bounds
+    within_bounds = np.mean((valid_nis >= r1) & (valid_nis <= r2)) * 100
+    
+    # Test results
+    results = {
+        'filter_consistent': r1 <= avg_nis <= r2,
+        'average_nis': avg_nis,
+        'lower_bound': r1,
+        'upper_bound': r2,
+        'percent_in_bounds': within_bounds,
+        'n_samples': N
+    }
+    
+    return results 

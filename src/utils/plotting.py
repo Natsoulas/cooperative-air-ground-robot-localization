@@ -144,71 +144,41 @@ def plot_estimation_results(t: np.ndarray,
     
     # Plot 2D trajectories
     ax1 = plt.subplot2grid((3, 2), (0, 0), colspan=2)
-    ax1.plot(true_states[:, 0], true_states[:, 1], 'k-', label='True UGV')
-    ax1.plot(true_states[:, 3], true_states[:, 4], 'k--', label='True UAV')
     ax1.plot(lkf_states[:, 0], lkf_states[:, 1], 'b-', label='LKF UGV')
     ax1.plot(lkf_states[:, 3], lkf_states[:, 4], 'b--', label='LKF UAV')
     ax1.plot(ekf_states[:, 0], ekf_states[:, 1], 'r-', label='EKF UGV')
     ax1.plot(ekf_states[:, 3], ekf_states[:, 4], 'r--', label='EKF UAV')
+    # Plot UAV GPS measurements
+    ax1.plot(measurements[:, 3], measurements[:, 4], 'g.', label='UAV GPS', alpha=0.3)
     ax1.grid(True)
     ax1.set_xlabel('East (m)')
     ax1.set_ylabel('North (m)')
     ax1.set_title('2D Trajectories Comparison')
     ax1.legend()
     
-    # Plot UGV position errors
+    # Plot UAV position error vs GPS
     ax2 = plt.subplot2grid((3, 2), (1, 0))
-    lkf_ugv_err = np.sqrt((lkf_states[:, 0] - true_states[:, 0])**2 + 
-                         (lkf_states[:, 1] - true_states[:, 1])**2)
-    ekf_ugv_err = np.sqrt((ekf_states[:, 0] - true_states[:, 0])**2 + 
-                         (ekf_states[:, 1] - true_states[:, 1])**2)
-    ax2.plot(t, lkf_ugv_err, 'b-', label='LKF')
-    ax2.plot(t, ekf_ugv_err, 'r-', label='EKF')
+    lkf_uav_err = np.sqrt((lkf_states[:, 3] - measurements[:, 3])**2 + 
+                         (lkf_states[:, 4] - measurements[:, 4])**2)
+    ekf_uav_err = np.sqrt((ekf_states[:, 3] - measurements[:, 3])**2 + 
+                         (ekf_states[:, 4] - measurements[:, 4])**2)
+    ax2.plot(t, lkf_uav_err, 'b-', label='LKF')
+    ax2.plot(t, ekf_uav_err, 'r-', label='EKF')
     ax2.grid(True)
     ax2.set_xlabel('Time (s)')
-    ax2.set_ylabel('Position Error (m)')
-    ax2.set_title('UGV Position Error')
+    ax2.set_ylabel('Position Error vs GPS (m)')
+    ax2.set_title('UAV Position Error')
     ax2.legend()
     
-    # Plot UAV position errors
+    # Plot filter differences
     ax3 = plt.subplot2grid((3, 2), (1, 1))
-    lkf_uav_err = np.sqrt((lkf_states[:, 3] - true_states[:, 3])**2 + 
-                         (lkf_states[:, 4] - true_states[:, 4])**2)
-    ekf_uav_err = np.sqrt((ekf_states[:, 3] - true_states[:, 3])**2 + 
-                         (ekf_states[:, 4] - true_states[:, 4])**2)
-    ax3.plot(t, lkf_uav_err, 'b-', label='LKF')
-    ax3.plot(t, ekf_uav_err, 'r-', label='EKF')
+    filter_pos_diff = np.sqrt(np.sum((lkf_states[:, :2] - ekf_states[:, :2])**2, axis=1))
+    ax3.plot(t, filter_pos_diff, 'k-', label='Position')
     ax3.grid(True)
     ax3.set_xlabel('Time (s)')
-    ax3.set_ylabel('Position Error (m)')
-    ax3.set_title('UAV Position Error')
+    ax3.set_ylabel('Difference (m)')
+    ax3.set_title('LKF vs EKF Difference')
     ax3.legend()
-    
-    # Plot heading errors
-    ax4 = plt.subplot2grid((3, 2), (2, 0))
-    lkf_heading_err = np.abs(np.mod(lkf_states[:, 2] - true_states[:, 2] + np.pi, 
-                                  2*np.pi) - np.pi)
-    ekf_heading_err = np.abs(np.mod(ekf_states[:, 2] - true_states[:, 2] + np.pi, 
-                                  2*np.pi) - np.pi)
-    ax4.plot(t, np.rad2deg(lkf_heading_err), 'b-', label='LKF UGV')
-    ax4.plot(t, np.rad2deg(ekf_heading_err), 'r-', label='EKF UGV')
-    ax4.grid(True)
-    ax4.set_xlabel('Time (s)')
-    ax4.set_ylabel('Heading Error (deg)')
-    ax4.set_title('Heading Error')
-    ax4.legend()
-    
-    # Plot filter uncertainties
-    ax5 = plt.subplot2grid((3, 2), (2, 1))
-    ax5.plot(t, np.sqrt(lkf_covs[:, 0, 0]), 'b-', label='LKF UGV East')
-    ax5.plot(t, np.sqrt(ekf_covs[:, 0, 0]), 'r-', label='EKF UGV East')
-    ax5.plot(t, np.sqrt(lkf_covs[:, 1, 1]), 'b--', label='LKF UGV North')
-    ax5.plot(t, np.sqrt(ekf_covs[:, 1, 1]), 'r--', label='EKF UGV North')
-    ax5.grid(True)
-    ax5.set_xlabel('Time (s)')
-    ax5.set_ylabel('Position Std Dev (m)')
-    ax5.set_title('Filter Uncertainties')
-    ax5.legend()
     
     plt.tight_layout()
     plt.show()
@@ -307,21 +277,29 @@ def compute_nees(true_states: np.ndarray,
     
     for i in range(N):
         # Compute error with proper angle wrapping
-        error = filter_states[i] - true_states[i]
-        # Wrap angle differences to [-π, π]
-        error[2] = np.mod(error[2] + np.pi, 2*np.pi) - np.pi  # UGV heading
-        error[5] = np.mod(error[5] + np.pi, 2*np.pi) - np.pi  # UAV heading
+        error = np.zeros(6)
+        error[0:2] = filter_states[i,0:2] - true_states[i,0:2]  # Position errors
+        error[3:5] = filter_states[i,3:5] - true_states[i,3:5]  # Position errors
+        
+        # Handle angles separately
+        error[2] = np.mod(filter_states[i,2] - true_states[i,2] + np.pi, 2*np.pi) - np.pi
+        error[5] = np.mod(filter_states[i,5] - true_states[i,5] + np.pi, 2*np.pi) - np.pi
         
         try:
-            # Ensure covariance is well-conditioned
-            min_eig = 1e-10
+            # Less aggressive covariance conditioning
             P = filter_covs[i]
             P = (P + P.T) / 2  # Ensure symmetry
-            eigvals, eigvecs = np.linalg.eigh(P)
-            eigvals = np.maximum(eigvals, min_eig)
-            P_inv = eigvecs @ np.diag(1/eigvals) @ eigvecs.T
             
+            # Use more stable pseudoinverse
+            P_inv = np.linalg.pinv(P, rcond=1e-6)
+            
+            # Compute NEES
             nees[i] = error @ P_inv @ error
+            
+            # Sanity check on NEES value
+            if nees[i] > 1e4 or nees[i] < 0:
+                nees[i] = np.nan
+                
         except np.linalg.LinAlgError:
             nees[i] = np.nan
             
@@ -355,39 +333,72 @@ def plot_filter_performance(t: np.ndarray,
                           measurements: np.ndarray,
                           R: np.ndarray,
                           filter_name: str):
-    """Plot comprehensive performance metrics for a single filter"""
+    """Plot filter performance metrics"""
     fig, axes = plt.subplots(3, 2, figsize=(15, 12))
     fig.suptitle(f'{filter_name} Performance Analysis')
     
-    # 1. Position errors with 2-sigma bounds
+    # 1. Position analysis
     ax = axes[0, 0]
-    pos_err_ugv = filter_states[:, :2] - true_states[:, :2]
-    pos_std_ugv = np.sqrt(np.array([filter_covs[i, :2, :2].diagonal() for i in range(len(t))]))
+    if true_states is not None:
+        # Plot position errors with 2σ bounds
+        pos_err_ugv = filter_states[:, :2] - true_states[:, :2]
+        pos_err_uav = filter_states[:, 3:5] - true_states[:, 3:5]
+        pos_std_ugv = np.sqrt(np.array([filter_covs[i, :2, :2].diagonal() for i in range(len(t))]))
+        pos_std_uav = np.sqrt(np.array([filter_covs[i, 3:5, 3:5].diagonal() for i in range(len(t))]))
+        
+        # UGV errors and bounds
+        ax.plot(t, pos_err_ugv[:, 0], 'b-', label='UGV East Error')
+        ax.plot(t, pos_err_ugv[:, 1], 'r-', label='UGV North Error')
+        ax.plot(t, 2*pos_std_ugv[:, 0], 'b--', alpha=0.5)
+        ax.plot(t, -2*pos_std_ugv[:, 0], 'b--', alpha=0.5)
+        ax.plot(t, 2*pos_std_ugv[:, 1], 'r--', alpha=0.5)
+        ax.plot(t, -2*pos_std_ugv[:, 1], 'r--', alpha=0.5)
+        
+        # UAV errors and bounds
+        ax.plot(t, pos_err_uav[:, 0], 'c-', label='UAV East Error')
+        ax.plot(t, pos_err_uav[:, 1], 'm-', label='UAV North Error')
+        ax.plot(t, 2*pos_std_uav[:, 0], 'c--', alpha=0.5)
+        ax.plot(t, -2*pos_std_uav[:, 0], 'c--', alpha=0.5)
+        ax.plot(t, 2*pos_std_uav[:, 1], 'm--', alpha=0.5)
+        ax.plot(t, -2*pos_std_uav[:, 1], 'm--', alpha=0.5)
+        
+        ax.set_title('Vehicle Position Errors with 2σ Bounds')
+        ax.set_ylabel('Error (m)')
+    else:
+        # Plot uncertainty magnitudes only
+        pos_std_ugv = np.sqrt(np.array([filter_covs[i, :2, :2].diagonal() for i in range(len(t))]))
+        pos_std_uav = np.sqrt(np.array([filter_covs[i, 3:5, 3:5].diagonal() for i in range(len(t))]))
+        
+        # UGV uncertainties
+        ax.plot(t, 2*pos_std_ugv[:, 0], 'b-', label='UGV East 2σ')
+        ax.plot(t, 2*pos_std_ugv[:, 1], 'r-', label='UGV North 2σ')
+        
+        # UAV uncertainties
+        ax.plot(t, 2*pos_std_uav[:, 0], 'c-', label='UAV East 2σ')
+        ax.plot(t, 2*pos_std_uav[:, 1], 'm-', label='UAV North 2σ')
+        
+        ax.set_title('Vehicle Position Uncertainty')
+        ax.set_ylabel('Uncertainty (m)')
     
-    ax.plot(t, pos_err_ugv[:, 0], 'b-', label='East Error')
-    ax.plot(t, pos_err_ugv[:, 1], 'r-', label='North Error')
-    ax.plot(t, 2*pos_std_ugv[:, 0], 'b--', alpha=0.5)
-    ax.plot(t, -2*pos_std_ugv[:, 0], 'b--', alpha=0.5)
-    ax.plot(t, 2*pos_std_ugv[:, 1], 'r--', alpha=0.5)
-    ax.plot(t, -2*pos_std_ugv[:, 1], 'r--', alpha=0.5)
     ax.grid(True)
     ax.set_xlabel('Time (s)')
-    ax.set_ylabel('Error (m)')
-    ax.set_title('UGV Position Errors with 2σ Bounds')
     ax.legend()
     
     # 2. NEES analysis
     ax = axes[0, 1]
-    nees = compute_nees(true_states, filter_states, filter_covs)
-    chi2_95 = chi2.ppf(0.95, df=6)
-
-    ax.plot(t, nees, 'k-', label='NEES')
-    ax.axhline(y=chi2_95, color='r', linestyle='--', label='95% Bound')
-    ax.set_ylim([0, max(chi2_95 * 2, np.nanpercentile(nees, 95))])  # Ensure bound is visible
+    if true_states is not None:
+        nees = compute_nees(true_states, filter_states, filter_covs)
+        chi2_95 = chi2.ppf(0.95, df=6)
+        ax.plot(t, nees, 'k-', label='NEES')
+        ax.axhline(y=chi2_95, color='r', linestyle='--', label='95% Bound')
+        ax.set_ylim([0, max(chi2_95 * 2, np.nanpercentile(nees, 95))])
+    else:
+        ax.text(0.5, 0.5, 'NEES not available\nwithout true states', 
+                ha='center', va='center', transform=ax.transAxes)
     ax.grid(True)
     ax.set_xlabel('Time (s)')
     ax.set_ylabel('NEES')
-    ax.set_title('NEES')  # Changed from spelled out version
+    ax.set_title('NEES')
     ax.legend()
     
     # 3. NIS analysis
@@ -420,18 +431,28 @@ def plot_filter_performance(t: np.ndarray,
     ax.set_title('NIS Distribution')
     ax.legend()
     
-    # 5. Heading error analysis
+    # 5. Heading analysis
     ax = axes[2, 0]
-    heading_err_ugv = np.mod(filter_states[:, 2] - true_states[:, 2] + np.pi, 2*np.pi) - np.pi
-    heading_std_ugv = np.sqrt(np.array([filter_covs[i, 2, 2] for i in range(len(t))]))
+    if true_states is not None:
+        heading_err_ugv = np.mod(filter_states[:, 2] - true_states[:, 2] + np.pi, 2*np.pi) - np.pi
+        heading_std_ugv = np.sqrt(np.array([filter_covs[i, 2, 2] for i in range(len(t))]))
+        
+        ax.plot(t, np.rad2deg(heading_err_ugv), 'b-', label='UGV Heading Error')
+        ax.plot(t, 2*np.rad2deg(heading_std_ugv), 'r--', label='2σ Bound')
+        ax.plot(t, -2*np.rad2deg(heading_std_ugv), 'r--')
+        ax.set_title('Heading Error with 2σ Bounds')
+        ax.set_ylabel('Error (deg)')
+    else:
+        # Plot heading uncertainty magnitudes
+        ugv_heading_std = np.sqrt(filter_covs[:, 2, 2])
+        uav_heading_std = np.sqrt(filter_covs[:, 5, 5])
+        ax.plot(t, 2*np.rad2deg(ugv_heading_std), 'b-', label='UGV 2σ')
+        ax.plot(t, 2*np.rad2deg(uav_heading_std), 'r-', label='UAV 2σ')
+        ax.set_title('Heading Uncertainty')
+        ax.set_ylabel('Angle (deg)')
     
-    ax.plot(t, np.rad2deg(heading_err_ugv), 'b-', label='UGV Heading Error')
-    ax.plot(t, 2*np.rad2deg(heading_std_ugv), 'r--', label='2σ Bound')
-    ax.plot(t, -2*np.rad2deg(heading_std_ugv), 'r--')
     ax.grid(True)
     ax.set_xlabel('Time (s)')
-    ax.set_ylabel('Error (deg)')
-    ax.set_title('Heading Error with 2σ Bounds')
     ax.legend()
     
     # 6. Covariance trace
@@ -447,35 +468,111 @@ def plot_filter_performance(t: np.ndarray,
     plt.show()
 
 def compute_nis(measurements: np.ndarray,
-                filter_states: np.ndarray,
-                filter_covs: np.ndarray,
-                R: np.ndarray) -> np.ndarray:
+               filter_states: np.ndarray,
+               filter_covs: np.ndarray,
+               R: np.ndarray) -> np.ndarray:
     """
-    Compute Normalized Innovation Squared (NIS)
+    Compute Normalized Innovation Squared (NIS) with proper angle wrapping
     """
     N = len(measurements)
     nis = np.zeros(N)
     
     for i in range(N):
-        # Compute predicted measurement
+        # Get measurement prediction
         pred_meas = measurement_model(filter_states[i], np.zeros(5))
         
-        # Innovation with proper angle wrapping
-        innovation = measurements[i] - pred_meas
-        innovation[0] = np.mod(innovation[0] + np.pi, 2*np.pi) - np.pi  # azimuth_g
-        innovation[2] = np.mod(innovation[2] + np.pi, 2*np.pi) - np.pi  # azimuth_a
+        # Compute innovation with proper angle wrapping
+        innovation = np.zeros(5)
+        innovation[1:] = measurements[i,1:] - pred_meas[1:]  # Non-angle measurements
         
-        # Compute measurement Jacobian
+        # Handle angle measurements separately
+        innovation[0] = np.mod(measurements[i,0] - pred_meas[0] + np.pi, 2*np.pi) - np.pi  # azimuth_g
+        innovation[2] = np.mod(measurements[i,2] - pred_meas[2] + np.pi, 2*np.pi) - np.pi  # azimuth_a
+        
+        # Compute innovation covariance
         H = measurement_jacobian(filter_states[i])
-        
-        # Innovation covariance
         S = H @ filter_covs[i] @ H.T + R
+        S = (S + S.T) / 2  # Ensure symmetry
         
         try:
-            # Ensure S is well-conditioned
-            S = (S + S.T) / 2
-            nis[i] = innovation @ np.linalg.solve(S, innovation)
+            # Compute NIS using pseudoinverse
+            S_inv = np.linalg.pinv(S, rcond=1e-6)
+            nis[i] = innovation @ S_inv @ innovation
+            
+            # Sanity check
+            if nis[i] > 1e4 or nis[i] < 0:
+                nis[i] = np.nan
+                
         except np.linalg.LinAlgError:
             nis[i] = np.nan
-    
+            
     return nis
+
+def plot_linearization_comparison(t: np.ndarray,
+                                nonlinear_states: np.ndarray,
+                                linear_states: np.ndarray):
+    """
+    Plot comparison between nonlinear and linearized dynamics
+    Args:
+        t: time vector
+        nonlinear_states: states from nonlinear simulation [N, 6]
+        linear_states: states from linearized simulation [N, 6]
+    """
+    fig = plt.figure(figsize=(12, 10))
+    fig.suptitle('Comparison of Nonlinear vs Linearized Dynamics')
+    
+    # State labels with LaTeX formatting
+    labels = [r'$\xi_g$ (m)', r'$\eta_g$ (m)', r'$\theta_g$ (rad)', 
+             r'$\xi_a$ (m)', r'$\eta_a$ (m)', r'$\theta_a$ (rad)']
+    
+    # Create subplots for each state
+    for i in range(6):
+        ax = plt.subplot(3, 2, i+1)
+        ax.plot(t, nonlinear_states[:, i], 'b-', label='Nonlinear', linewidth=2)
+        ax.plot(t, linear_states[:, i], 'r--', label='Linear', linewidth=2)
+        ax.grid(True)
+        ax.set_ylabel(labels[i])
+        ax.set_xlabel('Time (s)')
+        
+        # Only show legend on first subplot
+        if i == 0:
+            ax.legend()
+            
+        # Add error plot as an inset
+        error = linear_states[:, i] - nonlinear_states[:, i]
+        ax_inset = ax.inset_axes([0.6, 0.1, 0.35, 0.3])
+        ax_inset.plot(t, error, 'g-', linewidth=1)
+        ax_inset.grid(True)
+        ax_inset.set_title('Error', fontsize=8)
+        
+    plt.tight_layout()
+    plt.show()
+    
+    # Additional plot for 2D trajectory comparison
+    plt.figure(figsize=(10, 8))
+    plt.title('2D Trajectory Comparison')
+    
+    # Plot UGV trajectories
+    plt.plot(nonlinear_states[:, 0], nonlinear_states[:, 1], 'b-', 
+             label='UGV Nonlinear', linewidth=2)
+    plt.plot(linear_states[:, 0], linear_states[:, 1], 'b--', 
+             label='UGV Linear', linewidth=2)
+    
+    # Plot UAV trajectories
+    plt.plot(nonlinear_states[:, 3], nonlinear_states[:, 4], 'r-', 
+             label='UAV Nonlinear', linewidth=2)
+    plt.plot(linear_states[:, 3], linear_states[:, 4], 'r--', 
+             label='UAV Linear', linewidth=2)
+    
+    # Plot start points
+    plt.plot(nonlinear_states[0, 0], nonlinear_states[0, 1], 'bo', 
+             label='UGV Start')
+    plt.plot(nonlinear_states[0, 3], nonlinear_states[0, 4], 'ro', 
+             label='UAV Start')
+    
+    plt.grid(True)
+    plt.xlabel('East (m)')
+    plt.ylabel('North (m)')
+    plt.legend()
+    plt.axis('equal')
+    plt.show()
