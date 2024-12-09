@@ -9,12 +9,17 @@ from src.truth import TruthSimulator
 from src.utils.noise import NoiseGenerator
 from src.core.measurement import measurement_model
 from src.core.dynamics import combined_dynamics, ugv_dynamics, uav_dynamics
-from src.utils.plotting import plot_simulation_results, plot_estimation_results, plot_filter_differences, plot_filter_performance, plot_linearization_comparison
+from src.utils.plotting import plot_simulation_results, plot_estimation_results, plot_filter_differences, plot_filter_performance, plot_linearization_comparison, plot_uncertainty_bounds
 from src.core.filter import LinearizedKalmanFilter, ExtendedKalmanFilter, continuous_to_discrete, system_jacobian, input_jacobian
 from src.utils.analysis import perform_nees_hypothesis_test, perform_nis_hypothesis_test
 from src.utils.plotting import compute_nees, compute_nis
 from typing import Callable
 import src.utils.constants as constants
+from tuning import (
+    get_P0, get_LKF_Q, get_LKF_R, 
+    get_EKF_Q, get_EKF_R,
+    get_state_noise_std, get_meas_noise_std
+)
 
 def control_input(t: float) -> np.ndarray:
     """Generate control inputs for both vehicles"""
@@ -86,16 +91,18 @@ def main():
     truth_sim = TruthSimulator(L=L, dt=DT)
     x0 = np.array([XI_G_0, ETA_G_0, THETA_G_0, XI_A_0, ETA_A_0, THETA_A_0])
     
+    # Initialize noise generator
+    state_noise_std = get_state_noise_std()
+    meas_noise_std = get_meas_noise_std()
+    
     # Initialize Kalman filters with true noise parameters
-    P0 = 10*np.diag([3.0, 3.0, 0.5, 3.0, 3.0, 0.5])**2
+    P0 = get_P0()
+    lkf = LinearizedKalmanFilter(x0.copy(), P0.copy(), get_LKF_Q(), get_LKF_R(), L)
+    ekf = ExtendedKalmanFilter(x0.copy(), P0.copy(), get_EKF_Q(), get_EKF_R(), L)
     
-    # Use true process and measurement noise
-    Q = Qtrue
-    R = Rtrue
-    
-    # Initialize filters
-    lkf = LinearizedKalmanFilter(x0.copy(), P0.copy(), Q.copy(), R.copy(), L)
-    ekf = ExtendedKalmanFilter(x0.copy(), P0.copy(), Q.copy(), R.copy(), L)
+    # Use true process and measurement noise if available, otherwise use tuned values
+    Q = Qtrue if 'Qtrue' in locals() else get_EKF_Q()
+    R = Rtrue if 'Rtrue' in locals() else get_EKF_R()
     
     # Prepare state storage
     num_timesteps = len(tvec)
@@ -131,6 +138,9 @@ def main():
     # Plot results (modified to use real measurements)
     plot_estimation_results(tvec, None, lkf_states, ekf_states, 
                           lkf_covs, ekf_covs, measurements)
+    
+    # Plot uncertainty bounds
+    plot_uncertainty_bounds(tvec, lkf_covs, ekf_covs)
     
     # Plot individual filter performance
     plot_filter_performance(tvec, None, lkf_states, lkf_covs, 

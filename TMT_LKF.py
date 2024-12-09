@@ -9,6 +9,10 @@ from src.utils.analysis import perform_nees_hypothesis_test, perform_nis_hypothe
 from src.utils.plotting import compute_nees, compute_nis, plot_filter_performance, plot_monte_carlo_results
 import matplotlib.pyplot as plt
 from typing import List, Dict
+from tuning import (
+    get_P0, get_LKF_Q, get_LKF_R,
+    get_state_noise_std, get_meas_noise_std
+)
 
 def control_input(t: float) -> np.ndarray:
     """Generate control inputs for both vehicles"""
@@ -34,50 +38,14 @@ def run_monte_carlo_simulation(n_runs: int, t_span: tuple) -> Dict:
     # Initial state with perturbation
     x0 = np.array([XI_G_0, ETA_G_0, THETA_G_0, XI_A_0, ETA_A_0, THETA_A_0])
     
-    # Initialize noise generator with more accurate values (from main.py)
-    state_noise_std = np.array([
-        0.3,   # xi_g noise
-        0.3,   # eta_g noise
-        0.15,  # theta_g noise (radians)
-        0.3,   # xi_a noise
-        0.3,   # eta_a noise
-        0.15   # theta_a noise (radians)
-    ])
+    # Initialize noise generator
+    state_noise_std = get_state_noise_std()
+    meas_noise_std = get_meas_noise_std()
     
-    meas_noise_std = np.array([
-        0.02,    # azimuth_g noise (radians)
-        8.0,     # range noise (meters)
-        0.02,    # azimuth_a noise (radians)
-        6.0,     # xi_a GPS noise (meters)
-        6.0      # eta_a GPS noise (meters)
-    ])
-    
-    # Filter parameters (matched to estimate_from_real_data.py)
-    P0 = np.diag([
-        3.0,   # xi_g position
-        3.0,   # eta_g position
-        0.5,   # theta_g heading
-        3.0,   # xi_a position
-        3.0,   # eta_a position
-        0.5    # theta_a heading
-    ])**2
-    
-    Q = np.diag([
-        0.25,  # xi_g noise
-        0.25,  # eta_g noise
-        0.9,   # theta_g noise
-        0.25,  # xi_a noise
-        0.25,  # eta_a noise
-        0.9    # theta_a noise
-    ])**2
-    
-    R = np.diag([
-        0.05**2,  # azimuth_g noise
-        8.0**2,   # range noise
-        0.05**2,  # azimuth_a noise
-        6.0**2,   # xi_a GPS noise
-        6.0**2    # eta_a GPS noise
-    ])
+    # Filter parameters
+    P0 = get_P0()
+    Q = get_LKF_Q()
+    R = get_LKF_R()
     
     # Initialize truth simulator
     truth_sim = TruthSimulator(L=L, dt=DT)
@@ -165,7 +133,7 @@ def run_monte_carlo_simulation(n_runs: int, t_span: tuple) -> Dict:
 
 if __name__ == "__main__":
     # Run Monte Carlo simulation
-    n_runs = 100
+    n_runs = 10
     t_span = (0, T_FINAL)
     
     print("Running Monte Carlo simulations...")

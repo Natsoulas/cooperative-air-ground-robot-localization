@@ -139,54 +139,55 @@ def plot_estimation_results(t: np.ndarray,
                           lkf_covs: np.ndarray,
                           ekf_covs: np.ndarray,
                           measurements: np.ndarray):
-    """Plot estimation results and comparisons"""
-    fig = plt.figure(figsize=(15, 10))
+    """Plot estimation results and comparisons with 2-sigma bounds"""
+    # Create figure with 6 subplots (one for each state variable)
+    fig, axes = plt.subplots(3, 2, figsize=(15, 12))
+    fig.suptitle('State Estimation Results with 2σ Bounds')
     
-    # Plot 2D trajectories
-    ax1 = plt.subplot2grid((3, 2), (0, 0), colspan=2)
-    ax1.plot(lkf_states[:, 0], lkf_states[:, 1], 'b-', label='LKF UGV')
-    ax1.plot(lkf_states[:, 3], lkf_states[:, 4], 'b--', label='LKF UAV')
-    ax1.plot(ekf_states[:, 0], ekf_states[:, 1], 'r-', label='EKF UGV')
-    ax1.plot(ekf_states[:, 3], ekf_states[:, 4], 'r--', label='EKF UAV')
-    # Plot UAV GPS measurements
-    ax1.plot(measurements[:, 3], measurements[:, 4], 'g.', label='UAV GPS', alpha=0.3)
-    ax1.grid(True)
-    ax1.set_xlabel('East (m)')
-    ax1.set_ylabel('North (m)')
-    ax1.set_title('2D Trajectories Comparison')
-    ax1.legend()
+    # State labels
+    state_labels = [
+        r'$\xi_g$ (m)', r'$\eta_g$ (m)', r'$\theta_g$ (rad)',
+        r'$\xi_a$ (m)', r'$\eta_a$ (m)', r'$\theta_a$ (rad)'
+    ]
     
-    # Plot UAV position error vs GPS
-    ax2 = plt.subplot2grid((3, 2), (1, 0))
-    if true_states is not None:
-        lkf_uav_err = np.sqrt((lkf_states[:, 3] - measurements[:, 3])**2 + 
-                             (lkf_states[:, 4] - measurements[:, 4])**2)
-        ekf_uav_err = np.sqrt((ekf_states[:, 3] - measurements[:, 3])**2 + 
-                             (ekf_states[:, 4] - measurements[:, 4])**2)
-        ax2.plot(t, lkf_uav_err, 'b-', label='LKF')
-        ax2.plot(t, ekf_uav_err, 'r-', label='EKF')
-        ax2.grid(True)
-        ax2.set_xlabel('Time (s)')
-        ax2.set_ylabel('Position Error vs GPS (m)')
-        ax2.set_title('UAV Position Error')
-        ax2.legend()
+    # Flatten axes for easier iteration
+    axes = axes.flatten()
+    
+    # Plot each state
+    for i in range(6):
+        ax = axes[i]
         
-        # Plot filter differences in original position
-        ax3 = plt.subplot2grid((3, 2), (1, 1))
-    else:
-        # Remove the UAV position error subplot
-        fig.delaxes(ax2)
-        # Create expanded filter differences subplot
-        ax3 = plt.subplot2grid((3, 2), (1, 0), colspan=2)
-
-    # Plot filter differences (common code)
-    filter_pos_diff = np.sqrt(np.sum((lkf_states[:, :2] - ekf_states[:, :2])**2, axis=1))
-    ax3.plot(t, filter_pos_diff, 'k-', label='Position')
-    ax3.grid(True)
-    ax3.set_xlabel('Time (s)')
-    ax3.set_ylabel('Difference (m)')
-    ax3.set_title('LKF vs EKF Difference')
-    ax3.legend()
+        # Plot filter estimates
+        ax.plot(t, lkf_states[:, i], 'b-', label='LKF', alpha=0.7)
+        ax.plot(t, ekf_states[:, i], 'r-', label='EKF', alpha=0.7)
+        
+        # Calculate and plot 2-sigma bounds for LKF
+        lkf_std = 2 * np.sqrt(np.array([P[i,i] for P in lkf_covs]))
+        ax.fill_between(t, 
+                       lkf_states[:, i] - lkf_std,
+                       lkf_states[:, i] + lkf_std,
+                       color='b', alpha=0.2, label='LKF 2σ')
+        
+        # Calculate and plot 2-sigma bounds for EKF
+        ekf_std = 2 * np.sqrt(np.array([P[i,i] for P in ekf_covs]))
+        ax.fill_between(t, 
+                       ekf_states[:, i] - ekf_std,
+                       ekf_states[:, i] + ekf_std,
+                       color='r', alpha=0.2, label='EKF 2σ')
+        
+        # Plot measurements if available for UAV states
+        if i == 3:  # xi_a
+            ax.scatter(t, measurements[:, 3], c='g', s=10, alpha=0.3, label='GPS')
+        elif i == 4:  # eta_a
+            ax.scatter(t, measurements[:, 4], c='g', s=10, alpha=0.3, label='GPS')
+        
+        ax.grid(True)
+        ax.set_xlabel('Time (s)')
+        ax.set_ylabel(state_labels[i])
+        
+        # Only show legend on first subplot
+        if i == 0:
+            ax.legend()
     
     plt.tight_layout()
     plt.show()
@@ -661,6 +662,52 @@ def plot_monte_carlo_results(results: Dict, filter_type: str = "EKF", alpha: flo
     plt.ylabel('NIS')
     plt.title(f'NIS Values for All Monte Carlo Runs ({filter_type})')
     plt.legend()
+    
+    plt.tight_layout()
+    plt.show()
+
+def plot_uncertainty_bounds(t: np.ndarray,
+                          lkf_covs: np.ndarray,
+                          ekf_covs: np.ndarray):
+    """Plot only the 2-sigma uncertainty bounds for each state"""
+    fig, axes = plt.subplots(3, 2, figsize=(15, 12))
+    fig.suptitle('Filter Uncertainty Analysis (2σ Bounds)')
+    
+    # State labels
+    state_labels = [
+        r'$\xi_g$ Position', r'$\eta_g$ Position', r'$\theta_g$ Heading',
+        r'$\xi_a$ Position', r'$\eta_a$ Position', r'$\theta_a$ Heading'
+    ]
+    
+    # Units for y-axis
+    units = ['m', 'm', 'rad', 'm', 'm', 'rad']
+    
+    # Flatten axes for easier iteration
+    axes = axes.flatten()
+    
+    # Plot each state's uncertainty
+    for i in range(6):
+        ax = axes[i]
+        
+        # Calculate 2-sigma bounds for both filters
+        lkf_std = 2 * np.sqrt(np.array([P[i,i] for P in lkf_covs]))
+        ekf_std = 2 * np.sqrt(np.array([P[i,i] for P in ekf_covs]))
+        
+        # Plot bounds
+        ax.plot(t, lkf_std, 'b-', label='LKF', linewidth=2)
+        ax.plot(t, ekf_std, 'r-', label='EKF', linewidth=2)
+        
+        ax.grid(True)
+        ax.set_xlabel('Time (s)')
+        ax.set_ylabel(f'Uncertainty ({units[i]})')
+        ax.set_title(f'{state_labels[i]} Uncertainty')
+        
+        # Only show legend on first subplot
+        if i == 0:
+            ax.legend()
+        
+        # Set y-axis to start at 0
+        ax.set_ylim(bottom=0)
     
     plt.tight_layout()
     plt.show()

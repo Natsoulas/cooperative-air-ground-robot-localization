@@ -9,6 +9,7 @@ from src.utils.analysis import perform_nees_hypothesis_test, perform_nis_hypothe
 from src.utils.plotting import compute_nees, compute_nis, plot_filter_performance, plot_monte_carlo_results
 import matplotlib.pyplot as plt
 from typing import List, Dict
+from tuning import get_P0, get_EKF_Q, get_EKF_R
 
 def control_input(t: float) -> np.ndarray:
     """Generate control inputs for both vehicles"""
@@ -53,31 +54,13 @@ def run_monte_carlo_simulation(n_runs: int, t_span: tuple) -> Dict:
     ])
     
     # Filter parameters (matched to estimate_from_real_data.py)
-    P0 = np.diag([
-        3.0,   # xi_g position
-        3.0,   # eta_g position
-        0.5,   # theta_g heading
-        3.0,   # xi_a position
-        3.0,   # eta_a position
-        0.5    # theta_a heading
-    ])**2
+    P0 = get_P0(scale=10.0)  # Using larger initial uncertainty for real data
     
-    Q = np.diag([
-        0.25,  # xi_g noise
-        0.25,  # eta_g noise
-        0.9,   # theta_g noise
-        0.25,  # xi_a noise
-        0.25,  # eta_a noise
-        0.9    # theta_a noise
-    ])**2
-    
-    R = np.diag([
-        0.05**2,  # azimuth_g noise
-        8.0**2,   # range noise
-        0.05**2,  # azimuth_a noise
-        6.0**2,   # xi_a GPS noise
-        6.0**2    # eta_a GPS noise
-    ])
+    # Use true process and measurement noise if available, otherwise use tuned values
+    Rtrue = np.loadtxt('data/Rtrue.csv', delimiter=',')
+    Qtrue = np.loadtxt('data/Qtrue.csv', delimiter=',')
+    Q = Qtrue if 'Qtrue' in locals() else get_EKF_Q()
+    R = Rtrue if 'Rtrue' in locals() else get_EKF_R()
     
     # Initialize truth simulator
     truth_sim = TruthSimulator(L=L, dt=DT)
