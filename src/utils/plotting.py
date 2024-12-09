@@ -5,7 +5,7 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
-from typing import Tuple
+from typing import Dict, Tuple
 from scipy.stats import chi2
 from src.core.measurement import measurement_model, measurement_jacobian
 
@@ -158,20 +158,28 @@ def plot_estimation_results(t: np.ndarray,
     
     # Plot UAV position error vs GPS
     ax2 = plt.subplot2grid((3, 2), (1, 0))
-    lkf_uav_err = np.sqrt((lkf_states[:, 3] - measurements[:, 3])**2 + 
-                         (lkf_states[:, 4] - measurements[:, 4])**2)
-    ekf_uav_err = np.sqrt((ekf_states[:, 3] - measurements[:, 3])**2 + 
-                         (ekf_states[:, 4] - measurements[:, 4])**2)
-    ax2.plot(t, lkf_uav_err, 'b-', label='LKF')
-    ax2.plot(t, ekf_uav_err, 'r-', label='EKF')
-    ax2.grid(True)
-    ax2.set_xlabel('Time (s)')
-    ax2.set_ylabel('Position Error vs GPS (m)')
-    ax2.set_title('UAV Position Error')
-    ax2.legend()
-    
-    # Plot filter differences
-    ax3 = plt.subplot2grid((3, 2), (1, 1))
+    if true_states is not None:
+        lkf_uav_err = np.sqrt((lkf_states[:, 3] - measurements[:, 3])**2 + 
+                             (lkf_states[:, 4] - measurements[:, 4])**2)
+        ekf_uav_err = np.sqrt((ekf_states[:, 3] - measurements[:, 3])**2 + 
+                             (ekf_states[:, 4] - measurements[:, 4])**2)
+        ax2.plot(t, lkf_uav_err, 'b-', label='LKF')
+        ax2.plot(t, ekf_uav_err, 'r-', label='EKF')
+        ax2.grid(True)
+        ax2.set_xlabel('Time (s)')
+        ax2.set_ylabel('Position Error vs GPS (m)')
+        ax2.set_title('UAV Position Error')
+        ax2.legend()
+        
+        # Plot filter differences in original position
+        ax3 = plt.subplot2grid((3, 2), (1, 1))
+    else:
+        # Remove the UAV position error subplot
+        fig.delaxes(ax2)
+        # Create expanded filter differences subplot
+        ax3 = plt.subplot2grid((3, 2), (1, 0), colspan=2)
+
+    # Plot filter differences (common code)
     filter_pos_diff = np.sqrt(np.sum((lkf_states[:, :2] - ekf_states[:, :2])**2, axis=1))
     ax3.plot(t, filter_pos_diff, 'k-', label='Position')
     ax3.grid(True)
@@ -575,4 +583,84 @@ def plot_linearization_comparison(t: np.ndarray,
     plt.ylabel('North (m)')
     plt.legend()
     plt.axis('equal')
+    plt.show()
+
+def plot_monte_carlo_results(results: Dict, filter_type: str = "EKF", alpha: float = 0.05):
+    """
+    Plot Monte Carlo simulation results with scatter plots
+    Args:
+        results: Dictionary containing simulation results
+        filter_type: String indicating filter type ("EKF" or "LKF")
+        alpha: Significance level for confidence bounds
+    """
+    t = results['t']
+    
+    # Select appropriate data based on filter type
+    if filter_type.upper() == "EKF":
+        filter_states = results['first_run_data']['ekf_states']
+        filter_covs = results['first_run_data']['ekf_covs']
+        nees_values = results['ekf_nees_values']
+        nis_values = results['ekf_nis_values']
+    elif filter_type.upper() == "LKF":
+        filter_states = results['first_run_data']['lkf_states']
+        filter_covs = results['first_run_data']['lkf_covs']
+        nees_values = results['lkf_nees_values']
+        nis_values = results['lkf_nis_values']
+    else:
+        raise ValueError("filter_type must be either 'EKF' or 'LKF'")
+    
+    # Plot first run results
+    first_run = results['first_run_data']
+    plot_filter_performance(
+        t, 
+        first_run['true_states'],
+        filter_states,
+        filter_covs,
+        first_run['measurements'],
+        np.diag([0.05**2, 8.0**2, 0.05**2, 6.0**2, 6.0**2]),
+        f"{filter_type} (First Monte Carlo Run)"
+    )
+    
+    # Create figure for NEES and NIS scatter plots
+    plt.figure(figsize=(12, 8))
+    
+    # Plot NEES results
+    plt.subplot(211)
+    r1 = chi2.ppf(alpha/2, df=6) 
+    r2 = chi2.ppf(1-alpha/2, df=6)
+    
+    # Plot each Monte Carlo run as small dots
+    for i in range(nees_values.shape[0]):
+        plt.plot(t, nees_values[i], '.', markersize=1, alpha=0.2, color='blue')
+    
+    # Plot R-bounds
+    plt.axhline(y=r1, color='r', linestyle='--', label='R-bounds')
+    plt.axhline(y=r2, color='r', linestyle='--')
+    
+    plt.grid(True)
+    plt.xlabel('Time (s)')
+    plt.ylabel('NEES')
+    plt.title(f'NEES Values for All Monte Carlo Runs ({filter_type})')
+    plt.legend()
+    
+    # Plot NIS results
+    plt.subplot(212)
+    r1 = chi2.ppf(alpha/2, df=5)
+    r2 = chi2.ppf(1-alpha/2, df=5)
+    
+    # Plot each Monte Carlo run as small dots
+    for i in range(nis_values.shape[0]):
+        plt.plot(t, nis_values[i], '.', markersize=1, alpha=0.2, color='blue')
+    
+    # Plot R-bounds
+    plt.axhline(y=r1, color='r', linestyle='--', label='R-bounds')
+    plt.axhline(y=r2, color='r', linestyle='--')
+    
+    plt.grid(True)
+    plt.xlabel('Time (s)')
+    plt.ylabel('NIS')
+    plt.title(f'NIS Values for All Monte Carlo Runs ({filter_type})')
+    plt.legend()
+    
+    plt.tight_layout()
     plt.show()
