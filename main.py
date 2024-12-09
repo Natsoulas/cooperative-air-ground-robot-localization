@@ -53,11 +53,11 @@ def main():
     ])
     
     meas_noise_std = np.array([
-        0.3,    # azimuth_g noise (radians)
-        2.0,    # range noise (meters)
-        0.3,    # azimuth_a noise (radians)
-        1.0,    # xi_a GPS noise (meters)
-        1.0     # eta_a GPS noise (meters)
+        0.0225,    # azimuth_g noise (radians)
+        64,    # range noise (meters)
+        .04,    # azimuth_a noise (radians)
+        36,    # xi_a GPS noise (meters)
+        36     # eta_a GPS noise (meters)
     ])
     
     noise_gen = NoiseGenerator(state_noise_std, meas_noise_std)
