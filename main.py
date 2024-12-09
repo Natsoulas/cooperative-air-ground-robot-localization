@@ -82,12 +82,12 @@ def main():
     
     # Adjust process noise covariance
     Q = np.diag([
-        0.1,  # Reduced position noise
-        0.1,
-        0.05,  # Reduced angle noise
-        0.1,
-        0.1,
-        0.05
+        0.001,  # Reduced position noise
+        0.001,
+        0.01,  # Reduced angle noise
+        0.001,
+        0.001,
+        0.01
     ])**2
     
     # Keep measurement noise as is

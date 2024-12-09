@@ -28,6 +28,7 @@ def system_jacobian(state: np.ndarray, controls: np.ndarray, L: float) -> np.nda
     
     return F
 
+
 def measurement_jacobian(state: np.ndarray) -> np.ndarray:
     """
     Compute Jacobian of measurement model with respect to state
@@ -57,10 +58,10 @@ def measurement_jacobian(state: np.ndarray) -> np.ndarray:
     H[1, 4] = delta_eta / r
     
     # Derivatives for azimuth from UAV to UGV
-    H[2, 0] = -delta_eta / r_squared
-    H[2, 1] = delta_xi / r_squared
-    H[2, 3] = delta_eta / r_squared
-    H[2, 4] = -delta_xi / r_squared
+    H[2, 0] = delta_eta / r_squared
+    H[2, 1] = -delta_xi / r_squared
+    H[2, 3] = -delta_eta / r_squared
+    H[2, 4] = delta_xi / r_squared
     H[2, 5] = -1
     
     # Derivatives for UAV GPS measurements
@@ -68,6 +69,29 @@ def measurement_jacobian(state: np.ndarray) -> np.ndarray:
     H[4, 4] = 1  # d(eta_a_gps)/d(eta_a)
     
     return H
+
+def input_jacobian(state: np.ndarray, controls: np.ndarray, L: float) -> np.ndarray:
+    """
+    Compute Jacobian of system dynamics with respect to inputs
+    """
+    xi_g, eta_g, theta_g, xi_a, eta_a, theta_a = state
+    v_g, phi_g, v_a, omega_a = controls
+
+    # Initialize Jacobian matrix
+    B = np.zeros((6, 4))
+    
+    # UGV dynamics derivatives with respect to inputs
+    B[0, 0] = np.cos(theta_g)  
+    B[1, 0] = np.sin(theta_g) 
+    B[2, 0] = np.tan(phi_g) / L  
+    B[2, 1] = v_g * (1 / (L * np.cos(phi_g)**2)) 
+
+    # UAV dynamics derivatives with respect to inputs
+    B[3, 2] = np.cos(theta_a) 
+    B[4, 2] = np.sin(theta_a)
+    B[5, 3] = 1  
+
+    return B
 
 class LinearizedKalmanFilter:
     def __init__(self, x0: np.ndarray, P0: np.ndarray, Q: np.ndarray, R: np.ndarray, L: float):
