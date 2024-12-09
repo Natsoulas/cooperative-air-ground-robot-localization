@@ -11,10 +11,11 @@ try:
     import numpy as np
     import matplotlib.pyplot as plt
     import scipy
+    import scipy.linalg  # Explicitly check for scipy.linalg
 except ImportError as e:
     print(f"Required package missing: {e}")
     print("Please install required packages using:")
-    print("pip install numpy matplotlib scipy")
+    print("pip install numpy scipy matplotlib")
     sys.exit(1)
 
 # Add the project root directory to the Python path
@@ -35,6 +36,8 @@ def control_input(t: float) -> np.ndarray:
     return np.array([v_g, phi_g, v_a, omega_a])
 
 def generate_plot():
+    import matplotlib.pyplot as plt
+    
     # Run simulation
     truth_sim = TruthSimulator(L=L, dt=DT)
     x0 = np.array([XI_G_0, ETA_G_0, THETA_G_0, XI_A_0, ETA_A_0, THETA_A_0])

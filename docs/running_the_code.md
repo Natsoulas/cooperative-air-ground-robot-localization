@@ -3,6 +3,7 @@
 ## Prerequisites
 - Python 3.8+
 - NumPy
+- SciPy
 - Matplotlib
 
 ## Installation
@@ -14,7 +15,7 @@ cd cooperative-air-ground-robot-localization
 
 2. Install dependencies:
 ```bash
-pip install numpy matplotlib
+pip install numpy scipy matplotlib
 ```
 
 ## Running the Simulation
