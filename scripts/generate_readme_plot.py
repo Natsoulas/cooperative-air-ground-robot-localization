@@ -6,11 +6,21 @@
 import os
 import sys
 
+# Check for required packages
+try:
+    import numpy as np
+    import matplotlib.pyplot as plt
+    import scipy
+except ImportError as e:
+    print(f"Required package missing: {e}")
+    print("Please install required packages using:")
+    print("pip install numpy matplotlib scipy")
+    sys.exit(1)
+
 # Add the project root directory to the Python path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(project_root)
 
-import numpy as np
 from src.truth import TruthSimulator
 from src.utils.constants import *
 from src.core.filter import LinearizedKalmanFilter, ExtendedKalmanFilter
@@ -25,8 +35,6 @@ def control_input(t: float) -> np.ndarray:
     return np.array([v_g, phi_g, v_a, omega_a])
 
 def generate_plot():
-    import matplotlib.pyplot as plt
-    
     # Run simulation
     truth_sim = TruthSimulator(L=L, dt=DT)
     x0 = np.array([XI_G_0, ETA_G_0, THETA_G_0, XI_A_0, ETA_A_0, THETA_A_0])
