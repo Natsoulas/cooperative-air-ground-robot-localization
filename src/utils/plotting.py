@@ -223,30 +223,19 @@ def plot_uncertainty_bounds(t: np.ndarray,
     for i in range(6):
         ax = axes[i]
         
-        # Calculate and plot 2-sigma bounds for LKF
+        # Calculate 2-sigma bounds for each filter
         lkf_std = 2 * np.sqrt(np.array([P[i,i] for P in lkf_covs]))
-        ax.fill_between(t, 
-                       -lkf_std,
-                       lkf_std,
-                       color='b', alpha=0.1, label='LKF 2σ')
-        
-        # Calculate and plot 2-sigma bounds for EKF
         ekf_std = 2 * np.sqrt(np.array([P[i,i] for P in ekf_covs]))
-        ax.fill_between(t, 
-                       -ekf_std,
-                       ekf_std,
-                       color='r', alpha=0.1, label='EKF 2σ')
-
-        # Calculate and plot 2-sigma bounds for UKF
         ukf_std = 2 * np.sqrt(np.array([P[i,i] for P in ukf_covs]))
-        ax.fill_between(t, 
-                       -ukf_std,
-                       ukf_std,
-                       color='g', alpha=0.1, label='UKF 2σ')
+        
+        # Plot bounds magnitude directly
+        ax.plot(t, lkf_std, 'b-', label='LKF 2σ')
+        ax.plot(t, ekf_std, 'r-', label='EKF 2σ')
+        ax.plot(t, ukf_std, 'g-', label='UKF 2σ')
         
         ax.grid(True)
         ax.set_xlabel('Time (s)')
-        ax.set_ylabel(state_labels[i])
+        ax.set_ylabel(f'2σ Bound Magnitude for {state_labels[i]}')
         
         # Only show legend on first subplot
         if i == 0:

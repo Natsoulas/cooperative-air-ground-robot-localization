@@ -97,7 +97,7 @@ def main():
     meas_noise_std = get_meas_noise_std()
     
     # Initialize Kalman filters with true noise parameters
-    P0 = get_P0()
+    P0 = 10*get_P0()
     lkf = LinearizedKalmanFilter(x0.copy(), P0.copy(), get_LKF_Q(), get_LKF_R(), L)
     ekf = ExtendedKalmanFilter(x0.copy(), P0.copy(), get_EKF_Q(), get_EKF_R(), L)
     ukf = UnscentedKalmanFilter(x0.copy(), P0.copy(), get_UKF_Q(), get_UKF_R(), L)
