@@ -816,3 +816,94 @@ def plot_monte_carlo_results(results: Dict, filter_type: str = "EKF", alpha: flo
     
     plt.tight_layout()
     plt.show()
+
+def plot_single_simulation_results(t: np.ndarray,
+                                    true_states: np.ndarray,
+                                    filter_states: np.ndarray,
+                                    measurements: np.ndarray,
+                                    filter_covs: np.ndarray):
+    """Plot results from a single simulation run"""
+    fig, axes = plt.subplots(3, 2, figsize=(15, 10))
+    fig.suptitle('Single Simulation Results')
+    
+    # Plot UGV position states
+    ax = axes[0, 0]
+    ax.plot(t, true_states[:, 0], 'k-', label='True ξ_g')
+    ax.plot(t, filter_states[:, 0], 'b-', label='Est ξ_g')
+    std = 2 * np.sqrt(np.array([P[0,0] for P in filter_covs]))
+    ax.fill_between(t, 
+                   filter_states[:, 0] - std,
+                   filter_states[:, 0] + std,
+                   color='b', alpha=0.2, label='2σ')
+    ax.set_ylabel('East Position (m)')
+    ax.grid(True)
+    ax.legend()
+    
+    ax = axes[0, 1]
+    ax.plot(t, true_states[:, 1], 'k-', label='True η_g')
+    ax.plot(t, filter_states[:, 1], 'r-', label='Est η_g')
+    std = 2 * np.sqrt(np.array([P[1,1] for P in filter_covs]))
+    ax.fill_between(t, 
+                   filter_states[:, 1] - std,
+                   filter_states[:, 1] + std,
+                   color='r', alpha=0.2, label='2σ')
+    ax.set_ylabel('North Position (m)')
+    ax.grid(True)
+    ax.legend()
+    
+    # Plot UAV position states with GPS measurements
+    ax = axes[1, 0]
+    ax.plot(t, true_states[:, 3], 'k-', label='True ξ_a')
+    ax.plot(t, filter_states[:, 3], 'b-', label='Est ξ_a')
+    ax.scatter(t, measurements[:, 3], c='g', s=10, alpha=0.3, label='GPS')
+    std = 2 * np.sqrt(np.array([P[3,3] for P in filter_covs]))
+    ax.fill_between(t, 
+                   filter_states[:, 3] - std,
+                   filter_states[:, 3] + std,
+                   color='b', alpha=0.2, label='2σ')
+    ax.set_ylabel('East Position (m)')
+    ax.grid(True)
+    ax.legend()
+    
+    ax = axes[1, 1]
+    ax.plot(t, true_states[:, 4], 'k-', label='True η_a')
+    ax.plot(t, filter_states[:, 4], 'r-', label='Est η_a')
+    ax.scatter(t, measurements[:, 4], c='g', s=10, alpha=0.3, label='GPS')
+    std = 2 * np.sqrt(np.array([P[4,4] for P in filter_covs]))
+    ax.fill_between(t, 
+                   filter_states[:, 4] - std,
+                   filter_states[:, 4] + std,
+                   color='r', alpha=0.2, label='2σ')
+    ax.set_ylabel('North Position (m)')
+    ax.grid(True)
+    ax.legend()
+    
+    # Plot heading states
+    ax = axes[2, 0]
+    ax.plot(t, np.rad2deg(true_states[:, 2]), 'k-', label='True θ_g')
+    ax.plot(t, np.rad2deg(filter_states[:, 2]), 'b-', label='Est θ_g')
+    std = 2 * np.rad2deg(np.sqrt(np.array([P[2,2] for P in filter_covs])))
+    ax.fill_between(t, 
+                   np.rad2deg(filter_states[:, 2]) - std,
+                   np.rad2deg(filter_states[:, 2]) + std,
+                   color='b', alpha=0.2, label='2σ')
+    ax.set_xlabel('Time (s)')
+    ax.set_ylabel('UGV Heading (deg)')
+    ax.grid(True)
+    ax.legend()
+    
+    ax = axes[2, 1]
+    ax.plot(t, np.rad2deg(true_states[:, 5]), 'k-', label='True θ_a')
+    ax.plot(t, np.rad2deg(filter_states[:, 5]), 'r-', label='Est θ_a')
+    std = 2 * np.rad2deg(np.sqrt(np.array([P[5,5] for P in filter_covs])))
+    ax.fill_between(t, 
+                   np.rad2deg(filter_states[:, 5]) - std,
+                   np.rad2deg(filter_states[:, 5]) + std,
+                   color='r', alpha=0.2, label='2σ')
+    ax.set_xlabel('Time (s)')
+    ax.set_ylabel('UAV Heading (deg)')
+    ax.grid(True)
+    ax.legend()
+    
+    plt.tight_layout()
+    plt.show()
