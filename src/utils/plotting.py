@@ -136,8 +136,10 @@ def plot_estimation_results(t: np.ndarray,
                           true_states: np.ndarray,
                           lkf_states: np.ndarray,
                           ekf_states: np.ndarray,
+                          ukf_states: np.ndarray,
                           lkf_covs: np.ndarray,
                           ekf_covs: np.ndarray,
+                          ukf_covs: np.ndarray,
                           measurements: np.ndarray):
     """Plot estimation results and comparisons with 2-sigma bounds"""
     # Create figure with 6 subplots (one for each state variable)
@@ -160,26 +162,34 @@ def plot_estimation_results(t: np.ndarray,
         # Plot filter estimates
         ax.plot(t, lkf_states[:, i], 'b-', label='LKF', alpha=0.7)
         ax.plot(t, ekf_states[:, i], 'r-', label='EKF', alpha=0.7)
+        ax.plot(t, ukf_states[:, i], 'g-', label='UKF', alpha=0.7)
         
         # Calculate and plot 2-sigma bounds for LKF
         lkf_std = 2 * np.sqrt(np.array([P[i,i] for P in lkf_covs]))
         ax.fill_between(t, 
                        lkf_states[:, i] - lkf_std,
                        lkf_states[:, i] + lkf_std,
-                       color='b', alpha=0.2, label='LKF 2σ')
+                       color='b', alpha=0.1, label='LKF 2σ')
         
         # Calculate and plot 2-sigma bounds for EKF
         ekf_std = 2 * np.sqrt(np.array([P[i,i] for P in ekf_covs]))
         ax.fill_between(t, 
                        ekf_states[:, i] - ekf_std,
                        ekf_states[:, i] + ekf_std,
-                       color='r', alpha=0.2, label='EKF 2σ')
+                       color='r', alpha=0.1, label='EKF 2σ')
+
+        # Calculate and plot 2-sigma bounds for UKF
+        ukf_std = 2 * np.sqrt(np.array([P[i,i] for P in ukf_covs]))
+        ax.fill_between(t, 
+                       ukf_states[:, i] - ukf_std,
+                       ukf_states[:, i] + ukf_std,
+                       color='g', alpha=0.1, label='UKF 2σ')
         
         # Plot measurements if available for UAV states
         if i == 3:  # xi_a
-            ax.scatter(t, measurements[:, 3], c='g', s=10, alpha=0.3, label='GPS')
+            ax.scatter(t, measurements[:, 3], c='k', s=10, alpha=0.3, label='GPS')
         elif i == 4:  # eta_a
-            ax.scatter(t, measurements[:, 4], c='g', s=10, alpha=0.3, label='GPS')
+            ax.scatter(t, measurements[:, 4], c='k', s=10, alpha=0.3, label='GPS')
         
         ax.grid(True)
         ax.set_xlabel('Time (s)')
@@ -401,6 +411,7 @@ def plot_filter_performance(t: np.ndarray,
         ax.plot(t, nees, 'k-', label='NEES')
         ax.axhline(y=chi2_95, color='r', linestyle='--', label='95% Bound')
         ax.set_ylim([0, max(chi2_95 * 2, np.nanpercentile(nees, 95))])
+        ax.legend()
     else:
         ax.text(0.5, 0.5, 'NEES not available\nwithout true states', 
                 ha='center', va='center', transform=ax.transAxes)
@@ -408,7 +419,6 @@ def plot_filter_performance(t: np.ndarray,
     ax.set_xlabel('Time (s)')
     ax.set_ylabel('NEES')
     ax.set_title('NEES')
-    ax.legend()
     
     # 3. NIS analysis
     ax = axes[1, 0]
@@ -645,7 +655,8 @@ def plot_monte_carlo_results(results: Dict, filter_type: str = "EKF", alpha: flo
 
 def plot_uncertainty_bounds(t: np.ndarray,
                           lkf_covs: np.ndarray,
-                          ekf_covs: np.ndarray):
+                          ekf_covs: np.ndarray,
+                          ukf_covs: np.ndarray):
     """Plot only the 2-sigma uncertainty bounds for each state"""
     fig, axes = plt.subplots(3, 2, figsize=(15, 12))
     fig.suptitle('Filter Uncertainty Analysis (2σ Bounds)')
@@ -666,13 +677,15 @@ def plot_uncertainty_bounds(t: np.ndarray,
     for i in range(6):
         ax = axes[i]
         
-        # Calculate 2-sigma bounds for both filters
+        # Calculate 2-sigma bounds for all filters
         lkf_std = 2 * np.sqrt(np.array([P[i,i] for P in lkf_covs]))
         ekf_std = 2 * np.sqrt(np.array([P[i,i] for P in ekf_covs]))
+        ukf_std = 2 * np.sqrt(np.array([P[i,i] for P in ukf_covs]))
         
         # Plot bounds
         ax.plot(t, lkf_std, 'b-', label='LKF', linewidth=2)
         ax.plot(t, ekf_std, 'r-', label='EKF', linewidth=2)
+        ax.plot(t, ukf_std, 'g-', label='UKF', linewidth=2)
         
         ax.grid(True)
         ax.set_xlabel('Time (s)')

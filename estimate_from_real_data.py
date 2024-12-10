@@ -10,7 +10,7 @@ from src.utils.noise import NoiseGenerator
 from src.core.measurement import measurement_model
 from src.core.dynamics import combined_dynamics, ugv_dynamics, uav_dynamics
 from src.utils.plotting import plot_simulation_results, plot_estimation_results, plot_filter_differences, plot_filter_performance, plot_linearization_comparison, plot_uncertainty_bounds
-from src.core.filter import LinearizedKalmanFilter, ExtendedKalmanFilter, continuous_to_discrete, system_jacobian, input_jacobian
+from src.core.filter import LinearizedKalmanFilter, ExtendedKalmanFilter, UnscentedKalmanFilter, continuous_to_discrete, system_jacobian, input_jacobian
 from src.utils.analysis import perform_nees_hypothesis_test, perform_nis_hypothesis_test
 from src.utils.plotting import compute_nees, compute_nis
 from typing import Callable
@@ -18,6 +18,7 @@ import src.utils.constants as constants
 from tuning import (
     get_P0, get_LKF_Q, get_LKF_R, 
     get_EKF_Q, get_EKF_R,
+    get_UKF_Q, get_UKF_R,
     get_state_noise_std, get_meas_noise_std
 )
 
@@ -99,6 +100,7 @@ def main():
     P0 = get_P0()
     lkf = LinearizedKalmanFilter(x0.copy(), P0.copy(), get_LKF_Q(), get_LKF_R(), L)
     ekf = ExtendedKalmanFilter(x0.copy(), P0.copy(), get_EKF_Q(), get_EKF_R(), L)
+    ukf = UnscentedKalmanFilter(x0.copy(), P0.copy(), get_UKF_Q(), get_UKF_R(), L)
     
     # Use true process and measurement noise if available, otherwise use tuned values
     Q = Qtrue if 'Qtrue' in locals() else get_EKF_Q()
@@ -110,6 +112,8 @@ def main():
     ekf_states = np.zeros((num_timesteps, 6))
     lkf_covs = np.zeros((num_timesteps, 6, 6))
     ekf_covs = np.zeros((num_timesteps, 6, 6))
+    ukf_states = np.zeros((num_timesteps, 6))
+    ukf_covs = np.zeros((num_timesteps, 6, 6))
     
     # Get control inputs (using same function as before)
     controls = np.array([control_input(t) for t in tvec])
@@ -123,30 +127,36 @@ def main():
         ekf_states[i] = ekf.x
         lkf_covs[i] = lkf.P
         ekf_covs[i] = ekf.P
+        ukf_states[i] = ukf.x
+        ukf_covs[i] = ukf.P
         
         # Prediction step
         if i < num_timesteps - 1:
             dt = tvec[i+1] - tvec[i]  # Use actual time differences
             lkf.predict(controls[i], dt)
             ekf.predict(controls[i], dt)
+            ukf.predict(controls[i], dt)
         
         # Update step (skip if NaN measurement)
         if not np.any(np.isnan(measurements[i])):
             lkf.update(measurements[i])
             ekf.update(measurements[i])
+            ukf.update(measurements[i])
     
     # Plot results (modified to use real measurements)
-    plot_estimation_results(tvec, None, lkf_states, ekf_states, 
-                          lkf_covs, ekf_covs, measurements)
+    plot_estimation_results(tvec, None, lkf_states, ekf_states, ukf_states,
+                          lkf_covs, ekf_covs, ukf_covs, measurements)
     
     # Plot uncertainty bounds
-    plot_uncertainty_bounds(tvec, lkf_covs, ekf_covs)
+    plot_uncertainty_bounds(tvec, lkf_covs, ekf_covs, ukf_covs)
     
     # Plot individual filter performance
     plot_filter_performance(tvec, None, lkf_states, lkf_covs, 
                           measurements, R, "LKF")
     plot_filter_performance(tvec, None, ekf_states, ekf_covs, 
                           measurements, R, "EKF")
+    plot_filter_performance(tvec, None, ukf_states, ukf_covs, 
+                          measurements, R, "UKF")
     
     true_states = None
     
@@ -191,6 +201,17 @@ def main():
     print(f"Expected bounds: [{ekf_results['lower_bound']:.2f}, {ekf_results['upper_bound']:.2f}]")
     print(f"Percent in bounds: {ekf_results['percent_in_bounds']:.1f}%")
     print(f"Filter consistent: {ekf_results['filter_consistent']}")
+    
+    # Compute NIS values for UKF
+    ukf_nis = compute_nis(measurements, ukf_states, ukf_covs, R)
+    
+    # Perform NIS hypothesis test for UKF
+    print("\nUKF Results:")
+    ukf_results = perform_nis_hypothesis_test(ukf_nis)
+    print(f"Average NIS: {ukf_results['average_nis']:.2f}")
+    print(f"Expected bounds: [{ukf_results['lower_bound']:.2f}, {ukf_results['upper_bound']:.2f}]")
+    print(f"Percent in bounds: {ukf_results['percent_in_bounds']:.1f}%")
+    print(f"Filter consistent: {ukf_results['filter_consistent']}")
 
 if __name__ == "__main__":
     main()
