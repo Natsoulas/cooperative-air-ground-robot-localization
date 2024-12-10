@@ -598,29 +598,13 @@ def plot_monte_carlo_results(results: Dict, filter_type: str = "EKF", alpha: flo
     
     # Select appropriate data based on filter type
     if filter_type.upper() == "EKF":
-        filter_states = results['first_run_data']['ekf_states']
-        filter_covs = results['first_run_data']['ekf_covs']
         nees_values = results['ekf_nees_values']
         nis_values = results['ekf_nis_values']
     elif filter_type.upper() == "LKF":
-        filter_states = results['first_run_data']['lkf_states']
-        filter_covs = results['first_run_data']['lkf_covs']
         nees_values = results['lkf_nees_values']
         nis_values = results['lkf_nis_values']
     else:
         raise ValueError("filter_type must be either 'EKF' or 'LKF'")
-    
-    # Plot first run results
-    first_run = results['first_run_data']
-    plot_filter_performance(
-        t, 
-        first_run['true_states'],
-        filter_states,
-        filter_covs,
-        first_run['measurements'],
-        np.diag([0.05**2, 8.0**2, 0.05**2, 6.0**2, 6.0**2]),
-        f"{filter_type} (First Monte Carlo Run)"
-    )
     
     # Create figure for NEES and NIS scatter plots
     plt.figure(figsize=(12, 8))
@@ -632,7 +616,7 @@ def plot_monte_carlo_results(results: Dict, filter_type: str = "EKF", alpha: flo
     
     # Plot each Monte Carlo run as small dots
     for i in range(nees_values.shape[0]):
-        plt.plot(t, nees_values[i], '.', markersize=1, alpha=0.2, color='blue')
+        plt.plot(t, nees_values[i], '.', markersize=1, alpha=0.4, color='blue')
     
     # Plot R-bounds
     plt.axhline(y=r1, color='r', linestyle='--', label='R-bounds')
@@ -651,7 +635,7 @@ def plot_monte_carlo_results(results: Dict, filter_type: str = "EKF", alpha: flo
     
     # Plot each Monte Carlo run as small dots
     for i in range(nis_values.shape[0]):
-        plt.plot(t, nis_values[i], '.', markersize=1, alpha=0.2, color='blue')
+        plt.plot(t, nis_values[i], '.', markersize=1, alpha=0.4, color='blue')
     
     # Plot R-bounds
     plt.axhline(y=r1, color='r', linestyle='--', label='R-bounds')
@@ -708,6 +692,105 @@ def plot_uncertainty_bounds(t: np.ndarray,
         
         # Set y-axis to start at 0
         ax.set_ylim(bottom=0)
+    
+    plt.tight_layout()
+    plt.show()
+
+def plot_single_simulation_results(t: np.ndarray,
+                                true_states: np.ndarray,
+                                lkf_states: np.ndarray,
+                                measurements: np.ndarray,
+                                lkf_covs: np.ndarray):
+    """Plot single simulation results showing ground truth, measurements, and estimation errors"""
+    fig, axes = plt.subplots(3, 2, figsize=(15, 12))
+    fig.suptitle('LKF Single Simulation Analysis')
+    
+    # Plot 2D trajectory
+    ax = axes[0, 0]
+    # Ground truth
+    ax.plot(true_states[:, 0], true_states[:, 1], 'k-', label='UGV Truth')
+    ax.plot(true_states[:, 3], true_states[:, 4], 'k--', label='UAV Truth')
+    # LKF estimates
+    ax.plot(lkf_states[:, 0], lkf_states[:, 1], 'b-', label='UGV Est')
+    ax.plot(lkf_states[:, 3], lkf_states[:, 4], 'r-', label='UAV Est')
+    # UAV GPS measurements
+    ax.scatter(measurements[:, 3], measurements[:, 4], c='g', s=10, alpha=0.3, label='GPS')
+    ax.grid(True)
+    ax.set_xlabel('East (m)')
+    ax.set_ylabel('North (m)')
+    ax.set_title('2D Trajectory')
+    ax.legend()
+    ax.axis('equal')
+    
+    # Plot position errors with 2σ bounds
+    ax = axes[0, 1]
+    pos_err_ugv = lkf_states[:, :2] - true_states[:, :2]
+    pos_std_ugv = np.sqrt(np.array([lkf_covs[i, :2, :2].diagonal() for i in range(len(t))]))
+    
+    ax.plot(t, pos_err_ugv[:, 0], 'b-', label='East Error')
+    ax.plot(t, pos_err_ugv[:, 1], 'r-', label='North Error')
+    ax.plot(t, 2*pos_std_ugv[:, 0], 'b--', alpha=0.5)
+    ax.plot(t, -2*pos_std_ugv[:, 0], 'b--', alpha=0.5)
+    ax.plot(t, 2*pos_std_ugv[:, 1], 'r--', alpha=0.5)
+    ax.plot(t, -2*pos_std_ugv[:, 1], 'r--', alpha=0.5)
+    ax.grid(True)
+    ax.set_xlabel('Time (s)')
+    ax.set_ylabel('Error (m)')
+    ax.set_title('UGV Position Errors with 2σ Bounds')
+    ax.legend()
+    
+    # Plot range measurements
+    ax = axes[1, 0]
+    true_range = np.sqrt(np.sum((true_states[:, 3:5] - true_states[:, :2])**2, axis=1))
+    ax.plot(t, true_range, 'k-', label='True Range')
+    ax.plot(t, measurements[:, 1], 'g.', label='Measured', alpha=0.5)
+    ax.grid(True)
+    ax.set_xlabel('Time (s)')
+    ax.set_ylabel('Range (m)')
+    ax.set_title('Vehicle Range')
+    ax.legend()
+    
+    # Plot heading errors
+    ax = axes[1, 1]
+    heading_err_ugv = np.rad2deg(np.mod(lkf_states[:, 2] - true_states[:, 2] + np.pi, 2*np.pi) - np.pi)
+    heading_std_ugv = np.rad2deg(np.sqrt([cov[2,2] for cov in lkf_covs]))
+    ax.plot(t, heading_err_ugv, 'b-', label='UGV Heading Error')
+    ax.plot(t, 2*heading_std_ugv, 'r--', label='2σ Bounds')
+    ax.plot(t, -2*heading_std_ugv, 'r--')
+    ax.grid(True)
+    ax.set_xlabel('Time (s)')
+    ax.set_ylabel('Error (deg)')
+    ax.set_title('UGV Heading Error with 2σ Bounds')
+    ax.legend()
+    
+    # Plot azimuth measurements
+    ax = axes[2, 0]
+    true_azimuth = np.arctan2(true_states[:, 4] - true_states[:, 1], 
+                             true_states[:, 3] - true_states[:, 0]) - true_states[:, 2]
+    ax.plot(t, np.rad2deg(true_azimuth), 'k-', label='True Azimuth')
+    ax.plot(t, np.rad2deg(measurements[:, 0]), 'g.', label='Measured', alpha=0.5)
+    ax.grid(True)
+    ax.set_xlabel('Time (s)')
+    ax.set_ylabel('Angle (deg)')
+    ax.set_title('Relative Azimuth')
+    ax.legend()
+    
+    # Plot UAV position errors
+    ax = axes[2, 1]
+    pos_err_uav = lkf_states[:, 3:5] - true_states[:, 3:5]
+    pos_std_uav = np.sqrt(np.array([lkf_covs[i, 3:5, 3:5].diagonal() for i in range(len(t))]))
+    
+    ax.plot(t, pos_err_uav[:, 0], 'b-', label='East Error')
+    ax.plot(t, pos_err_uav[:, 1], 'r-', label='North Error')
+    ax.plot(t, 2*pos_std_uav[:, 0], 'b--', alpha=0.5)
+    ax.plot(t, -2*pos_std_uav[:, 0], 'b--', alpha=0.5)
+    ax.plot(t, 2*pos_std_uav[:, 1], 'r--', alpha=0.5)
+    ax.plot(t, -2*pos_std_uav[:, 1], 'r--', alpha=0.5)
+    ax.grid(True)
+    ax.set_xlabel('Time (s)')
+    ax.set_ylabel('Error (m)')
+    ax.set_title('UAV Position Errors with 2σ Bounds')
+    ax.legend()
     
     plt.tight_layout()
     plt.show()

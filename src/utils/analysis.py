@@ -28,18 +28,18 @@ def perform_nees_hypothesis_test(nees_values: np.ndarray, alpha: float = 0.05, n
     
     # Chi-square test bounds for n*N degrees of freedom
     # Where n is number of states and N is number of samples
-    dof = n_states
-    
-    # Lower and upper bounds for individual NEES values
-    r1 = chi2.ppf(alpha/2, dof)
-    r2 = chi2.ppf(1 - alpha/2, dof)
+    dof = n_states * N
     
     # Bounds for average NEES
-    r1_bar = r1/N
-    r2_bar = r2/N
+    r1 = chi2.ppf(alpha/2, dof) / N
+    r2 = chi2.ppf(1 - alpha/2, dof) / N
     
-    # Percentage of samples within bounds
-    within_bounds = np.mean((valid_nees >= r1) & (valid_nees <= r2)) * 100
+    # Individual bounds for NEES values
+    r1_ind = chi2.ppf(alpha/2, n_states)
+    r2_ind = chi2.ppf(1 - alpha/2, n_states)
+    
+    # Percentage of samples within individual bounds
+    within_bounds = np.mean((valid_nees >= r1_ind) & (valid_nees <= r2_ind)) * 100
     
     # Test results
     results = {

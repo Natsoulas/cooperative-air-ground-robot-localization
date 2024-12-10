@@ -6,7 +6,7 @@ from src.utils.noise import NoiseGenerator
 from src.core.measurement import measurement_model
 from src.core.filter import LinearizedKalmanFilter
 from src.utils.analysis import perform_nees_hypothesis_test, perform_nis_hypothesis_test
-from src.utils.plotting import compute_nees, compute_nis, plot_filter_performance, plot_monte_carlo_results
+from src.utils.plotting import compute_nees, compute_nis, plot_filter_performance, plot_monte_carlo_results, plot_single_simulation_results
 import matplotlib.pyplot as plt
 from typing import List, Dict
 from tuning import (
@@ -138,6 +138,16 @@ if __name__ == "__main__":
     
     print("Running Monte Carlo simulations...")
     results = run_monte_carlo_simulation(n_runs, t_span)
+    
+    # Plot single simulation results first
+    first_run = results['first_run_data']
+    plot_single_simulation_results(
+        first_run['t'],
+        first_run['true_states'],
+        first_run['lkf_states'],
+        first_run['measurements'],
+        first_run['lkf_covs']
+    )
     
     # Plot results for LKF
     print("\nPlotting LKF results...")
