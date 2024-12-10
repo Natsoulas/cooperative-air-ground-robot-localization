@@ -177,7 +177,7 @@ def plot_estimation_results(t: np.ndarray,
                        ekf_states[:, i] - ekf_std,
                        ekf_states[:, i] + ekf_std,
                        color='r', alpha=0.1, label='EKF 2σ')
-
+        
         # Calculate and plot 2-sigma bounds for UKF
         ukf_std = 2 * np.sqrt(np.array([P[i,i] for P in ukf_covs]))
         ax.fill_between(t, 
@@ -187,9 +187,62 @@ def plot_estimation_results(t: np.ndarray,
         
         # Plot measurements if available for UAV states
         if i == 3:  # xi_a
-            ax.scatter(t, measurements[:, 3], c='k', s=10, alpha=0.3, label='GPS')
+            ax.scatter(t, measurements[:, 3], c='k', s=10, alpha=0.3, label='UAV GPS')
         elif i == 4:  # eta_a
-            ax.scatter(t, measurements[:, 4], c='k', s=10, alpha=0.3, label='GPS')
+            ax.scatter(t, measurements[:, 4], c='k', s=10, alpha=0.3, label='UAV GPS')
+        
+        ax.grid(True)
+        ax.set_xlabel('Time (s)')
+        ax.set_ylabel(state_labels[i])
+        
+        # Show legend for all subplots that have GPS measurements or the first subplot
+        if i in [0, 3, 4]:
+            ax.legend()
+    
+    plt.tight_layout()
+    plt.show()
+
+def plot_uncertainty_bounds(t: np.ndarray,
+                          lkf_covs: np.ndarray,
+                          ekf_covs: np.ndarray,
+                          ukf_covs: np.ndarray):
+    """Plot uncertainty bounds for position and heading"""
+    fig, axes = plt.subplots(3, 2, figsize=(15, 12))
+    fig.suptitle('Uncertainty Bounds Comparison')
+    
+    # State labels
+    state_labels = [
+        r'$\xi_g$ (m)', r'$\eta_g$ (m)', r'$\theta_g$ (rad)',
+        r'$\xi_a$ (m)', r'$\eta_a$ (m)', r'$\theta_a$ (rad)'
+    ]
+    
+    # Flatten axes for easier iteration
+    axes = axes.flatten()
+    
+    # Plot each state
+    for i in range(6):
+        ax = axes[i]
+        
+        # Calculate and plot 2-sigma bounds for LKF
+        lkf_std = 2 * np.sqrt(np.array([P[i,i] for P in lkf_covs]))
+        ax.fill_between(t, 
+                       -lkf_std,
+                       lkf_std,
+                       color='b', alpha=0.1, label='LKF 2σ')
+        
+        # Calculate and plot 2-sigma bounds for EKF
+        ekf_std = 2 * np.sqrt(np.array([P[i,i] for P in ekf_covs]))
+        ax.fill_between(t, 
+                       -ekf_std,
+                       ekf_std,
+                       color='r', alpha=0.1, label='EKF 2σ')
+
+        # Calculate and plot 2-sigma bounds for UKF
+        ukf_std = 2 * np.sqrt(np.array([P[i,i] for P in ukf_covs]))
+        ax.fill_between(t, 
+                       -ukf_std,
+                       ukf_std,
+                       color='g', alpha=0.1, label='UKF 2σ')
         
         ax.grid(True)
         ax.set_xlabel('Time (s)')
@@ -199,6 +252,117 @@ def plot_estimation_results(t: np.ndarray,
         if i == 0:
             ax.legend()
     
+    plt.tight_layout()
+    plt.show()
+
+def plot_filter_convergence(t: np.ndarray,
+                          lkf_states: np.ndarray,
+                          ekf_states: np.ndarray,
+                          ukf_states: np.ndarray,
+                          lkf_covs: np.ndarray,
+                          ekf_covs: np.ndarray,
+                          ukf_covs: np.ndarray,
+                          measurements: np.ndarray,
+                          R: np.ndarray):
+    """Plot filter convergence and error behavior"""
+    fig, axes = plt.subplots(3, 2, figsize=(15, 12))
+    fig.suptitle('Filter Convergence Analysis')
+    
+    # Position differences between filters
+    ax = axes[0, 0]
+    lkf_ekf_diff = np.linalg.norm(lkf_states[:, [0,1]] - ekf_states[:, [0,1]], axis=1)
+    lkf_ukf_diff = np.linalg.norm(lkf_states[:, [0,1]] - ukf_states[:, [0,1]], axis=1)
+    ekf_ukf_diff = np.linalg.norm(ekf_states[:, [0,1]] - ukf_states[:, [0,1]], axis=1)
+    
+    ax.plot(t, lkf_ekf_diff, 'b-', label='LKF-EKF')
+    ax.plot(t, lkf_ukf_diff, 'r-', label='LKF-UKF')
+    ax.plot(t, ekf_ukf_diff, 'g-', label='EKF-UKF')
+    ax.set_xlabel('Time (s)')
+    ax.set_ylabel('Position Difference (m)')
+    ax.set_title('UGV Position Estimate Differences')
+    ax.grid(True)
+    ax.legend()
+
+    # UAV position differences
+    ax = axes[0, 1]
+    lkf_ekf_diff_uav = np.linalg.norm(lkf_states[:, [3,4]] - ekf_states[:, [3,4]], axis=1)
+    lkf_ukf_diff_uav = np.linalg.norm(lkf_states[:, [3,4]] - ukf_states[:, [3,4]], axis=1)
+    ekf_ukf_diff_uav = np.linalg.norm(ekf_states[:, [3,4]] - ukf_states[:, [3,4]], axis=1)
+    
+    ax.plot(t, lkf_ekf_diff_uav, 'b-', label='LKF-EKF')
+    ax.plot(t, lkf_ukf_diff_uav, 'r-', label='LKF-UKF')
+    ax.plot(t, ekf_ukf_diff_uav, 'g-', label='EKF-UKF')
+    ax.set_xlabel('Time (s)')
+    ax.set_ylabel('Position Difference (m)')
+    ax.set_title('UAV Position Estimate Differences')
+    ax.grid(True)
+    ax.legend()
+
+    # Heading convergence
+    ax = axes[1, 0]
+    heading_diff_lkf_ekf = np.rad2deg(np.mod(lkf_states[:, 2] - ekf_states[:, 2] + np.pi, 2*np.pi) - np.pi)
+    heading_diff_lkf_ukf = np.rad2deg(np.mod(lkf_states[:, 2] - ukf_states[:, 2] + np.pi, 2*np.pi) - np.pi)
+    heading_diff_ekf_ukf = np.rad2deg(np.mod(ekf_states[:, 2] - ukf_states[:, 2] + np.pi, 2*np.pi) - np.pi)
+    
+    ax.plot(t, heading_diff_lkf_ekf, 'b-', label='LKF-EKF')
+    ax.plot(t, heading_diff_lkf_ukf, 'r-', label='LKF-UKF')
+    ax.plot(t, heading_diff_ekf_ukf, 'g-', label='EKF-UKF')
+    ax.set_xlabel('Time (s)')
+    ax.set_ylabel('Heading Difference (deg)')
+    ax.set_title('UGV Heading Estimate Differences')
+    ax.grid(True)
+    ax.legend()
+
+    # Innovation statistics
+    ax = axes[1, 1]
+    # Plot measurement residuals for GPS measurements
+    gps_innov_lkf = measurements[:, 3:5] - lkf_states[:, 3:5]
+    gps_innov_ekf = measurements[:, 3:5] - ekf_states[:, 3:5]
+    gps_innov_ukf = measurements[:, 3:5] - ukf_states[:, 3:5]
+    
+    gps_innov_norm_lkf = np.linalg.norm(gps_innov_lkf, axis=1)
+    gps_innov_norm_ekf = np.linalg.norm(gps_innov_ekf, axis=1)
+    gps_innov_norm_ukf = np.linalg.norm(gps_innov_ukf, axis=1)
+    
+    ax.plot(t, gps_innov_norm_lkf, 'b-', label='LKF', alpha=0.7)
+    ax.plot(t, gps_innov_norm_ekf, 'r-', label='EKF', alpha=0.7)
+    ax.plot(t, gps_innov_norm_ukf, 'g-', label='UKF', alpha=0.7)
+    ax.set_xlabel('Time (s)')
+    ax.set_ylabel('GPS Innovation Magnitude (m)')
+    ax.set_title('GPS Measurement Innovations')
+    ax.grid(True)
+    ax.legend()
+
+    # Covariance trace evolution
+    ax = axes[2, 0]
+    lkf_cov_trace = np.array([np.trace(P) for P in lkf_covs])
+    ekf_cov_trace = np.array([np.trace(P) for P in ekf_covs])
+    ukf_cov_trace = np.array([np.trace(P) for P in ukf_covs])
+    
+    ax.plot(t, lkf_cov_trace, 'b-', label='LKF')
+    ax.plot(t, ekf_cov_trace, 'r-', label='EKF')
+    ax.plot(t, ukf_cov_trace, 'g-', label='UKF')
+    ax.set_xlabel('Time (s)')
+    ax.set_ylabel('Trace')
+    ax.set_title('Total Uncertainty (Covariance Trace)')
+    ax.grid(True)
+    ax.legend()
+
+    # Range measurement innovations
+    ax = axes[2, 1]
+    range_innov_lkf = measurements[:, 1] - np.linalg.norm(lkf_states[:, 3:5] - lkf_states[:, :2], axis=1)
+    range_innov_ekf = measurements[:, 1] - np.linalg.norm(ekf_states[:, 3:5] - ekf_states[:, :2], axis=1)
+    range_innov_ukf = measurements[:, 1] - np.linalg.norm(ukf_states[:, 3:5] - ukf_states[:, :2], axis=1)
+    
+    ax.plot(t, range_innov_lkf, 'b-', label='LKF', alpha=0.7)
+    ax.plot(t, range_innov_ekf, 'r-', label='EKF', alpha=0.7)
+    ax.plot(t, range_innov_ukf, 'g-', label='UKF', alpha=0.7)
+    ax.set_xlabel('Time (s)')
+    ax.set_ylabel('Range Innovation (m)')
+    ax.set_title('Range Measurement Innovations')
+    ax.grid(True)
+    ax.legend()
+
     plt.tight_layout()
     plt.show()
 
@@ -649,154 +813,6 @@ def plot_monte_carlo_results(results: Dict, filter_type: str = "EKF", alpha: flo
     plt.ylabel('NIS')
     plt.title(f'NIS Values for All Monte Carlo Runs ({filter_type})')
     plt.legend()
-    
-    plt.tight_layout()
-    plt.show()
-
-def plot_uncertainty_bounds(t: np.ndarray,
-                          lkf_covs: np.ndarray,
-                          ekf_covs: np.ndarray,
-                          ukf_covs: np.ndarray):
-    """Plot only the 2-sigma uncertainty bounds for each state"""
-    fig, axes = plt.subplots(3, 2, figsize=(15, 12))
-    fig.suptitle('Filter Uncertainty Analysis (2σ Bounds)')
-    
-    # State labels
-    state_labels = [
-        r'$\xi_g$ Position', r'$\eta_g$ Position', r'$\theta_g$ Heading',
-        r'$\xi_a$ Position', r'$\eta_a$ Position', r'$\theta_a$ Heading'
-    ]
-    
-    # Units for y-axis
-    units = ['m', 'm', 'rad', 'm', 'm', 'rad']
-    
-    # Flatten axes for easier iteration
-    axes = axes.flatten()
-    
-    # Plot each state's uncertainty
-    for i in range(6):
-        ax = axes[i]
-        
-        # Calculate 2-sigma bounds for all filters
-        lkf_std = 2 * np.sqrt(np.array([P[i,i] for P in lkf_covs]))
-        ekf_std = 2 * np.sqrt(np.array([P[i,i] for P in ekf_covs]))
-        ukf_std = 2 * np.sqrt(np.array([P[i,i] for P in ukf_covs]))
-        
-        # Plot bounds
-        ax.plot(t, lkf_std, 'b-', label='LKF', linewidth=2)
-        ax.plot(t, ekf_std, 'r-', label='EKF', linewidth=2)
-        ax.plot(t, ukf_std, 'g-', label='UKF', linewidth=2)
-        
-        ax.grid(True)
-        ax.set_xlabel('Time (s)')
-        ax.set_ylabel(f'Uncertainty ({units[i]})')
-        ax.set_title(f'{state_labels[i]} Uncertainty')
-        
-        # Only show legend on first subplot
-        if i == 0:
-            ax.legend()
-        
-        # Set y-axis to start at 0
-        ax.set_ylim(bottom=0)
-    
-    plt.tight_layout()
-    plt.show()
-
-def plot_single_simulation_results(t: np.ndarray,
-                                true_states: np.ndarray,
-                                lkf_states: np.ndarray,
-                                measurements: np.ndarray,
-                                lkf_covs: np.ndarray):
-    """Plot single simulation results showing ground truth, measurements, and estimation errors"""
-    fig, axes = plt.subplots(3, 2, figsize=(15, 12))
-    fig.suptitle('Single Simulation Analysis')
-    
-    # Plot 2D trajectory
-    ax = axes[0, 0]
-    # Ground truth
-    ax.plot(true_states[:, 0], true_states[:, 1], 'k-', label='UGV Truth')
-    ax.plot(true_states[:, 3], true_states[:, 4], 'k--', label='UAV Truth')
-    # LKF estimates
-    ax.plot(lkf_states[:, 0], lkf_states[:, 1], 'b-', label='UGV Est')
-    ax.plot(lkf_states[:, 3], lkf_states[:, 4], 'r-', label='UAV Est')
-    # UAV GPS measurements
-    ax.scatter(measurements[:, 3], measurements[:, 4], c='g', s=10, alpha=0.3, label='GPS')
-    ax.grid(True)
-    ax.set_xlabel('East (m)')
-    ax.set_ylabel('North (m)')
-    ax.set_title('2D Trajectory')
-    ax.legend()
-    ax.axis('equal')
-    
-    # Plot position errors with 2σ bounds
-    ax = axes[0, 1]
-    pos_err_ugv = lkf_states[:, :2] - true_states[:, :2]
-    pos_std_ugv = np.sqrt(np.array([lkf_covs[i, :2, :2].diagonal() for i in range(len(t))]))
-    
-    ax.plot(t, pos_err_ugv[:, 0], 'b-', label='East Error')
-    ax.plot(t, pos_err_ugv[:, 1], 'r-', label='North Error')
-    ax.plot(t, 2*pos_std_ugv[:, 0], 'b--', alpha=0.5)
-    ax.plot(t, -2*pos_std_ugv[:, 0], 'b--', alpha=0.5)
-    ax.plot(t, 2*pos_std_ugv[:, 1], 'r--', alpha=0.5)
-    ax.plot(t, -2*pos_std_ugv[:, 1], 'r--', alpha=0.5)
-    ax.grid(True)
-    ax.set_xlabel('Time (s)')
-    ax.set_ylabel('Error (m)')
-    ax.set_title('UGV Position Errors with 2σ Bounds')
-    ax.legend()
-    
-    # Plot range measurements
-    ax = axes[1, 0]
-    true_range = np.sqrt(np.sum((true_states[:, 3:5] - true_states[:, :2])**2, axis=1))
-    ax.plot(t, true_range, 'k-', label='True Range')
-    ax.plot(t, measurements[:, 1], 'g.', label='Measured', alpha=0.5)
-    ax.grid(True)
-    ax.set_xlabel('Time (s)')
-    ax.set_ylabel('Range (m)')
-    ax.set_title('Vehicle Range')
-    ax.legend()
-    
-    # Plot heading errors
-    ax = axes[1, 1]
-    heading_err_ugv = np.rad2deg(np.mod(lkf_states[:, 2] - true_states[:, 2] + np.pi, 2*np.pi) - np.pi)
-    heading_std_ugv = np.rad2deg(np.sqrt([cov[2,2] for cov in lkf_covs]))
-    ax.plot(t, heading_err_ugv, 'b-', label='UGV Heading Error')
-    ax.plot(t, 2*heading_std_ugv, 'r--', label='2σ Bounds')
-    ax.plot(t, -2*heading_std_ugv, 'r--')
-    ax.grid(True)
-    ax.set_xlabel('Time (s)')
-    ax.set_ylabel('Error (deg)')
-    ax.set_title('UGV Heading Error with 2σ Bounds')
-    ax.legend()
-    
-    # Plot azimuth measurements
-    ax = axes[2, 0]
-    true_azimuth = np.arctan2(true_states[:, 4] - true_states[:, 1], 
-                             true_states[:, 3] - true_states[:, 0]) - true_states[:, 2]
-    ax.plot(t, np.rad2deg(true_azimuth), 'k-', label='True Azimuth')
-    ax.plot(t, np.rad2deg(measurements[:, 0]), 'g.', label='Measured', alpha=0.5)
-    ax.grid(True)
-    ax.set_xlabel('Time (s)')
-    ax.set_ylabel('Angle (deg)')
-    ax.set_title('Relative Azimuth')
-    ax.legend()
-    
-    # Plot UAV position errors
-    ax = axes[2, 1]
-    pos_err_uav = lkf_states[:, 3:5] - true_states[:, 3:5]
-    pos_std_uav = np.sqrt(np.array([lkf_covs[i, 3:5, 3:5].diagonal() for i in range(len(t))]))
-    
-    ax.plot(t, pos_err_uav[:, 0], 'b-', label='East Error')
-    ax.plot(t, pos_err_uav[:, 1], 'r-', label='North Error')
-    ax.plot(t, 2*pos_std_uav[:, 0], 'b--', alpha=0.5)
-    ax.plot(t, -2*pos_std_uav[:, 0], 'b--', alpha=0.5)
-    ax.plot(t, 2*pos_std_uav[:, 1], 'r--', alpha=0.5)
-    ax.plot(t, -2*pos_std_uav[:, 1], 'r--', alpha=0.5)
-    ax.grid(True)
-    ax.set_xlabel('Time (s)')
-    ax.set_ylabel('Error (m)')
-    ax.set_title('UAV Position Errors with 2σ Bounds')
-    ax.legend()
     
     plt.tight_layout()
     plt.show()

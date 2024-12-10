@@ -9,7 +9,7 @@ from src.truth import TruthSimulator
 from src.utils.noise import NoiseGenerator
 from src.core.measurement import measurement_model
 from src.core.dynamics import combined_dynamics, ugv_dynamics, uav_dynamics
-from src.utils.plotting import plot_simulation_results, plot_estimation_results, plot_filter_differences, plot_filter_performance, plot_linearization_comparison, plot_uncertainty_bounds
+from src.utils.plotting import plot_simulation_results, plot_estimation_results, plot_filter_differences, plot_filter_performance, plot_linearization_comparison, plot_uncertainty_bounds, plot_filter_convergence
 from src.core.filter import LinearizedKalmanFilter, ExtendedKalmanFilter, UnscentedKalmanFilter, continuous_to_discrete, system_jacobian, input_jacobian
 from src.utils.analysis import perform_nees_hypothesis_test, perform_nis_hypothesis_test
 from src.utils.plotting import compute_nees, compute_nis
@@ -143,20 +143,19 @@ def main():
             ekf.update(measurements[i])
             ukf.update(measurements[i])
     
-    # Plot results (modified to use real measurements)
+    # Plot results in three separate figures
+    
+    # 1. State evolution with bounds
     plot_estimation_results(tvec, None, lkf_states, ekf_states, ukf_states,
                           lkf_covs, ekf_covs, ukf_covs, measurements)
     
-    # Plot uncertainty bounds
+    # 2. Uncertainty bounds comparison
     plot_uncertainty_bounds(tvec, lkf_covs, ekf_covs, ukf_covs)
     
-    # Plot individual filter performance
-    plot_filter_performance(tvec, None, lkf_states, lkf_covs, 
-                          measurements, R, "LKF")
-    plot_filter_performance(tvec, None, ekf_states, ekf_covs, 
-                          measurements, R, "EKF")
-    plot_filter_performance(tvec, None, ukf_states, ukf_covs, 
-                          measurements, R, "UKF")
+    # 3. Filter convergence analysis
+    plot_filter_convergence(tvec, lkf_states, ekf_states, ukf_states,
+                          lkf_covs, ekf_covs, ukf_covs,
+                          measurements, R)
     
     true_states = None
     
