@@ -587,24 +587,17 @@ def plot_linearization_comparison(t: np.ndarray,
     plt.show()
 
 def plot_monte_carlo_results(results: Dict, filter_type: str = "EKF", alpha: float = 0.05):
-    """
-    Plot Monte Carlo simulation results with scatter plots
-    Args:
-        results: Dictionary containing simulation results
-        filter_type: String indicating filter type ("EKF" or "LKF")
-        alpha: Significance level for confidence bounds
-    """
-    t = results['t']
+    """Plot Monte Carlo simulation results"""
+    if filter_type not in ["EKF", "LKF", "UKF"]:
+        raise ValueError("filter_type must be either 'EKF', 'LKF', or 'UKF'")
     
-    # Select appropriate data based on filter type
-    if filter_type.upper() == "EKF":
-        nees_values = results['ekf_nees_values']
-        nis_values = results['ekf_nis_values']
-    elif filter_type.upper() == "LKF":
-        nees_values = results['lkf_nees_values']
-        nis_values = results['lkf_nis_values']
-    else:
-        raise ValueError("filter_type must be either 'EKF' or 'LKF'")
+    # Get NEES and NIS values based on filter type
+    nees_key = f"{filter_type.lower()}_nees_values"
+    nis_key = f"{filter_type.lower()}_nis_values"
+    
+    nees_values = results[nees_key]
+    nis_values = results[nis_key]
+    t = results['t']
     
     # Create figure for NEES and NIS scatter plots
     plt.figure(figsize=(12, 8))
@@ -703,7 +696,7 @@ def plot_single_simulation_results(t: np.ndarray,
                                 lkf_covs: np.ndarray):
     """Plot single simulation results showing ground truth, measurements, and estimation errors"""
     fig, axes = plt.subplots(3, 2, figsize=(15, 12))
-    fig.suptitle('LKF Single Simulation Analysis')
+    fig.suptitle('Single Simulation Analysis')
     
     # Plot 2D trajectory
     ax = axes[0, 0]

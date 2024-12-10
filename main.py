@@ -10,12 +10,12 @@ from src.utils.noise import NoiseGenerator
 from src.core.measurement import measurement_model
 from src.core.dynamics import combined_dynamics, ugv_dynamics, uav_dynamics
 from src.utils.plotting import plot_simulation_results, plot_estimation_results, plot_filter_differences, plot_filter_performance, plot_linearization_comparison
-from src.core.filter import LinearizedKalmanFilter, ExtendedKalmanFilter, continuous_to_discrete, system_jacobian, input_jacobian
+from src.core.filter import LinearizedKalmanFilter, ExtendedKalmanFilter, continuous_to_discrete, system_jacobian, input_jacobian, UnscentedKalmanFilter
 from src.utils.analysis import perform_nees_hypothesis_test
 from src.utils.plotting import compute_nees
 from typing import Callable
 import src.utils.constants as constants
-
+from tuning import get_UKF_Q, get_UKF_R
 def control_input(t: float) -> np.ndarray:
     """Generate control inputs for both vehicles"""
     # UGV controls with sinusoidal steering
@@ -183,6 +183,30 @@ def main():
         # Update step
         lkf.update(measurements[i])
         ekf.update(measurements[i])
+    
+    # Initialize UKF
+    ukf = UnscentedKalmanFilter(x0.copy(), P0.copy(), get_UKF_Q(), get_UKF_R(), L)
+
+    # Add UKF state storage
+    ukf_states = np.zeros_like(true_states)
+    ukf_covs = np.zeros((len(t), 6, 6))
+
+    # In the main loop, add UKF prediction and update steps
+    for i in range(len(t)):
+        # Store current estimates
+        ukf_states[i] = ukf.x
+        ukf_covs[i] = ukf.P
+        
+        # Prediction step
+        if i < len(t) - 1:
+            ukf.predict(controls[i], DT)
+        
+        # Update step
+        ukf.update(measurements[i])
+
+    # Plot UKF results
+    plot_filter_performance(t, true_states, ukf_states, ukf_covs, 
+                           measurements, R, "UKF")
     
     # Plot results
     # Original truth and measurement plots
