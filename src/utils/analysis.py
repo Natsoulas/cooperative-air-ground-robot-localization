@@ -42,8 +42,10 @@ def perform_nees_hypothesis_test(nees_values: np.ndarray, alpha: float = 0.05, n
     within_bounds = np.mean((valid_nees >= r1_ind) & (valid_nees <= r2_ind)) * 100
     
     # Test results
+    tolerance = 5
+    expected_percentage = (1 - alpha) * 100
     results = {
-        'filter_consistent': r1 <= avg_nees <= r2,
+        'filter_consistent': abs(within_bounds - expected_percentage) <= tolerance,
         'average_nees': avg_nees,
         'lower_bound': r1,
         'upper_bound': r2,
@@ -82,9 +84,11 @@ def perform_nis_hypothesis_test(nis_values: np.ndarray, alpha: float = 0.05, n_m
     # Percentage of samples within bounds
     within_bounds = np.mean((valid_nis >= r1) & (valid_nis <= r2)) * 100
     
-    # Test results
+    # Add tolerance for percentage check (e.g., ±5%)
+    tolerance = 5
+    expected_percentage = (1 - alpha) * 100
     results = {
-        'filter_consistent': r1 <= avg_nis <= r2,
+        'filter_consistent': abs(within_bounds - expected_percentage) <= tolerance,
         'average_nis': avg_nis,
         'lower_bound': r1,
         'upper_bound': r2,
