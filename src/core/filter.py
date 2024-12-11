@@ -154,8 +154,8 @@ class LinearizedKalmanFilter(KalmanFilterBase):
 
 class ExtendedKalmanFilter(KalmanFilterBase):
     def predict(self, controls: np.ndarray, dt: float) -> None:
-        """Simplified EKF prediction"""
-        # RK4 integration
+        """Prediction with observability-aware covariance propagation"""
+        # RK4 integration remains the same
         k1 = combined_dynamics(self.x, controls, np.zeros(6), self.L)
         k2 = combined_dynamics(self.x + dt/2 * k1, controls, np.zeros(6), self.L)
         k3 = combined_dynamics(self.x + dt/2 * k2, controls, np.zeros(6), self.L)
@@ -164,10 +164,21 @@ class ExtendedKalmanFilter(KalmanFilterBase):
         self.x = self.x + dt/6 * (k1 + 2*k2 + 2*k3 + k4)
         self.normalize_state()
         
-        # Linearize and discretize
+        # Get system matrices at predicted state
         A = system_jacobian(self.x, controls, self.L)
         B = input_jacobian(self.x, controls, self.L)
         F, _, Q_d = continuous_to_discrete(A, B, self.Q, dt)
+        
+        # Compute relative geometry for observability scaling
+        delta_x = self.x[3] - self.x[0]  # UAV - UGV positions
+        delta_y = self.x[4] - self.x[1]
+        range_sq = delta_x**2 + delta_y**2
+        
+        # Scale process noise based on observability
+        obs_scale = np.ones(6)
+        obs_scale[0:2] *= (1 + range_sq / 400.0)  # Reduced UGV scaling
+        obs_scale[3:5] *= np.sqrt(range_sq / 400.0)  # Reduced UAV scaling
+        Q_d = Q_d * np.sqrt(obs_scale[:, None] * obs_scale[None, :])  # Square root for gentler scaling
         
         # Covariance propagation
         self.P = F @ self.P @ F.T + Q_d
@@ -210,21 +221,26 @@ class UnscentedKalmanFilter(KalmanFilterBase):
     def __init__(self, x0: np.ndarray, P0: np.ndarray, Q: np.ndarray, R: np.ndarray, L: float):
         super().__init__(x0, P0, Q, R, L)
         
-        # UKF parameters - tuned for real data
+        # UKF parameters - even more conservative
         self.n = len(x0)
-        self.alpha = 0.25    # Increased from 0.1 for better spread
-        self.beta = 2.0      # Optimal for Gaussian
-        self.kappa = 0.0     # Simplified tuning
+        self.alpha = 0.15    # Further reduced
+        self.beta = 2.0      # Keep optimal for Gaussian
+        self.kappa = -1.0    # Slightly negative for better spread
         
         # Derived parameters
         self.lambda_ = self.alpha**2 * (self.n + self.kappa) - self.n
         self.gamma = np.sqrt(self.n + self.lambda_)
         
-        # Calculate weights
-        self.weights_m = np.full(2 * self.n + 1, 1.0 / (2 * (self.n + self.lambda_)))
-        self.weights_c = self.weights_m.copy()
+        # Calculate weights once
+        self.weights_m = np.zeros(2 * self.n + 1)
+        self.weights_c = np.zeros(2 * self.n + 1)
+        
         self.weights_m[0] = self.lambda_ / (self.n + self.lambda_)
         self.weights_c[0] = self.weights_m[0] + (1 - self.alpha**2 + self.beta)
+        
+        for i in range(1, 2 * self.n + 1):
+            self.weights_m[i] = 1.0 / (2 * (self.n + self.lambda_))
+            self.weights_c[i] = self.weights_m[i]
 
     def generate_sigma_points(self) -> np.ndarray:
         """Generate sigma points using current state and covariance"""
@@ -261,101 +277,51 @@ class UnscentedKalmanFilter(KalmanFilterBase):
         return sigma_points
 
     def predict(self, controls: np.ndarray, dt: float) -> None:
-        """UKF prediction step with improved uncertainty handling"""
-        # Generate sigma points with scaled parameters for better spread
+        """UKF prediction step with improved angle handling"""
+        # Generate sigma points
         sigma_points = self.generate_sigma_points()
+        
+        # Propagate each sigma point
         propagated_points = np.zeros_like(sigma_points)
-        
-        # Pre-allocate arrays for efficiency
-        sin_theta_g = np.zeros(len(sigma_points))
-        cos_theta_g = np.zeros(len(sigma_points))
-        sin_theta_a = np.zeros(len(sigma_points))
-        cos_theta_a = np.zeros(len(sigma_points))
-        
-        # Propagate each sigma point with adaptive step size
         for i in range(len(sigma_points)):
-            # Adaptive RK4 integration with error estimation
+            # RK4 integration
             state = sigma_points[i]
-            h = dt  # Initial step size
+            k1 = combined_dynamics(state, controls, np.zeros(6), self.L)
+            k2 = combined_dynamics(state + dt/2 * k1, controls, np.zeros(6), self.L)
+            k3 = combined_dynamics(state + dt/2 * k2, controls, np.zeros(6), self.L)
+            k4 = combined_dynamics(state + dt * k3, controls, np.zeros(6), self.L)
             
-            while h > 1e-6:  # Minimum step size threshold
-                # RK4 with current step
-                k1 = combined_dynamics(state, controls, np.zeros(6), self.L)
-                k2 = combined_dynamics(state + h/2 * k1, controls, np.zeros(6), self.L)
-                k3 = combined_dynamics(state + h/2 * k2, controls, np.zeros(6), self.L)
-                k4 = combined_dynamics(state + h * k3, controls, np.zeros(6), self.L)
-                
-                # Compute two solutions for error estimation
-                sol1 = state + h/6 * (k1 + 2*k2 + 2*k3 + k4)
-                sol2 = state + h/6 * (k1 + 4*k2 + k4)  # Alternative formula
-                
-                # Estimate error
-                error = np.max(np.abs(sol1 - sol2))
-                
-                if error < 1e-6:  # Error tolerance
-                    propagated_points[i] = sol1
-                    break
-                
-                h *= 0.5  # Reduce step size if error too large
+            propagated_points[i] = state + dt/6 * (k1 + 2*k2 + 2*k3 + k4)
             
-            # Store trig values for efficient angle averaging
+            # Normalize angles
             propagated_points[i, 2] = self.normalize_angle(propagated_points[i, 2])
             propagated_points[i, 5] = self.normalize_angle(propagated_points[i, 5])
-            sin_theta_g[i] = np.sin(propagated_points[i, 2])
-            cos_theta_g[i] = np.cos(propagated_points[i, 2])
-            sin_theta_a[i] = np.sin(propagated_points[i, 5])
-            cos_theta_a[i] = np.cos(propagated_points[i, 5])
         
-        # Update state estimate with robust weighted mean
+        # Compute mean state with special handling for angles
         self.x = np.zeros(self.n)
         
-        # Position states with Huber-like robust weighting
-        for i in range(len(propagated_points)):
-            # Compute robust weights
-            pos_diff = np.linalg.norm(propagated_points[i, [0,1,3,4]] - 
-                                    np.mean(propagated_points[:, [0,1,3,4]], axis=0))
-            weight = min(1.0, 2.0/max(pos_diff, 1e-6))
-            w = self.weights_m[i] * weight
-            
-            # Update positions
-            self.x[0:2] += w * propagated_points[i, 0:2]
-            self.x[3:5] += w * propagated_points[i, 3:5]
+        # Non-angular states
+        for j in [0,1,3,4]:
+            self.x[j] = np.sum(self.weights_m * propagated_points[:, j])
         
-        # Angle states using vectorized circular mean
-        self.x[2] = np.arctan2(
-            np.sum(self.weights_m * sin_theta_g),
-            np.sum(self.weights_m * cos_theta_g)
-        )
-        self.x[5] = np.arctan2(
-            np.sum(self.weights_m * sin_theta_a),
-            np.sum(self.weights_m * cos_theta_a)
-        )
+        # Angular states using vectorized circular mean
+        for j in [2,5]:
+            s = np.sum(self.weights_m * np.sin(propagated_points[:, j]))
+            c = np.sum(self.weights_m * np.cos(propagated_points[:, j]))
+            self.x[j] = np.arctan2(s, c)
         
-        # Modified covariance update with controlled scaling
+        # Compute covariance with angle-aware differences
         self.P = np.zeros((self.n, self.n))
-        max_diff = 0.0
-        
         for i in range(len(propagated_points)):
-            diff = np.zeros(self.n)
-            diff[0:2] = propagated_points[i, 0:2] - self.x[0:2]
-            diff[3:5] = propagated_points[i, 3:5] - self.x[3:5]
-            diff[2] = self.normalize_angle(propagated_points[i, 2] - self.x[2])
-            diff[5] = self.normalize_angle(propagated_points[i, 5] - self.x[5])
-            
-            # Use Huber-like robust weighting
-            diff_norm = np.linalg.norm(diff)
-            weight = min(1.0, 2.0/max(diff_norm, 1e-6))
-            self.P += weight * self.weights_c[i] * np.outer(diff, diff)
+            diff = propagated_points[i] - self.x
+            diff[2] = self.normalize_angle(diff[2])
+            diff[5] = self.normalize_angle(diff[5])
+            self.P += self.weights_c[i] * np.outer(diff, diff)
         
-        # More conservative process noise scaling
-        noise_scale = min(1.5, 1.0 + 0.1 * np.log1p(max_diff))
-        self.P += noise_scale * dt * self.Q
+        # Add process noise
+        self.P += dt * self.Q
         
-        # Additional numerical stability checks
-        eigvals = np.linalg.eigvals(self.P)
-        if np.any(eigvals < self.min_cov_eigenval):
-            self.P += self.min_cov_eigenval * np.eye(self.n)
-        
+        # Ensure numerical stability
         self.ensure_covariance_validity()
     
     def update(self, measurement: np.ndarray) -> None:
