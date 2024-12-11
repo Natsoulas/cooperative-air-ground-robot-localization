@@ -213,8 +213,8 @@ def main():
     plot_simulation_results(t, true_states, measurements, controls)
     
     # State estimation results plots
-    plot_estimation_results(t, true_states, lkf_states, ekf_states, 
-                          lkf_covs, ekf_covs, measurements)
+    plot_estimation_results(t, true_states, lkf_states, ekf_states, ukf_states,
+                          lkf_covs, ekf_covs, ukf_covs, measurements)
     
     # Plot individual filter performance analysis:
 
