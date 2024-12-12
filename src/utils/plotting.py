@@ -682,14 +682,11 @@ def compute_nis(measurements: np.ndarray,
 
 def plot_linearization_comparison(t: np.ndarray,
                                 nonlinear_states: np.ndarray,
-                                linear_states: np.ndarray):
-    """
-    Plot comparison between nonlinear and linearized dynamics
-    Args:
-        t: time vector
-        nonlinear_states: states from nonlinear simulation [N, 6]
-        linear_states: states from linearized simulation [N, 6]
-    """
+                                linear_states: np.ndarray,
+                                nonlinear_measurements: np.ndarray,
+                                linear_measurements: np.ndarray):
+    """Plot comparison between nonlinear and linearized dynamics and measurements"""
+    # State comparison plots
     fig = plt.figure(figsize=(12, 10))
     fig.suptitle('Comparison of Nonlinear vs Linearized Dynamics')
     
@@ -706,21 +703,13 @@ def plot_linearization_comparison(t: np.ndarray,
         ax.set_ylabel(labels[i])
         ax.set_xlabel('Time (s)')
         
-        # Only show legend on first subplot
         if i == 0:
             ax.legend()
-            
-        # Add error plot as an inset
-        error = linear_states[:, i] - nonlinear_states[:, i]
-        ax_inset = ax.inset_axes([0.6, 0.1, 0.35, 0.3])
-        ax_inset.plot(t, error, 'g-', linewidth=1)
-        ax_inset.grid(True)
-        ax_inset.set_title('Error', fontsize=8)
-        
+    
     plt.tight_layout()
     plt.show()
     
-    # Additional plot for 2D trajectory comparison
+    # 2D trajectory comparison (keep existing code)
     plt.figure(figsize=(10, 8))
     plt.title('2D Trajectory Comparison')
     
@@ -747,6 +736,33 @@ def plot_linearization_comparison(t: np.ndarray,
     plt.ylabel('North (m)')
     plt.legend()
     plt.axis('equal')
+    plt.show()
+    
+    # Add measurement comparison plots
+    fig, axes = plt.subplots(3, 2, figsize=(12, 10))
+    fig.suptitle('Comparison of Nonlinear vs Linearized Measurements')
+    
+    meas_labels = [r'Azimuth$_g$ (rad)', 'Range (m)', r'Azimuth$_a$ (rad)', 
+                  r'$\xi_a$ GPS (m)', r'$\eta_a$ GPS (m)']
+    
+    for i in range(5):
+        row = i // 2
+        col = i % 2
+        ax = axes[row, col]
+            
+        ax.plot(t, nonlinear_measurements[:, i], 'b-', label='Nonlinear', linewidth=2)
+        ax.plot(t, linear_measurements[:, i], 'r--', label='Linear', linewidth=2)
+        ax.grid(True)
+        ax.set_ylabel(meas_labels[i])
+        ax.set_xlabel('Time (s)')
+        
+        if i == 0:
+            ax.legend()
+    
+    # Remove the unused subplot
+    fig.delaxes(axes[2, 1])
+    
+    plt.tight_layout()
     plt.show()
 
 def plot_monte_carlo_results(results: Dict, filter_type: str = "EKF", alpha: float = 0.05):

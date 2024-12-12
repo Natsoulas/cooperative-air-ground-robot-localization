@@ -7,7 +7,7 @@ import numpy as np
 from src.utils.constants import *
 from src.truth import TruthSimulator
 from src.utils.noise import NoiseGenerator
-from src.core.measurement import measurement_model
+from src.core.measurement import measurement_model, measurement_jacobian
 from src.core.dynamics import combined_dynamics, ugv_dynamics, uav_dynamics
 from src.utils.plotting import plot_simulation_results, plot_estimation_results, plot_filter_differences, plot_filter_performance, plot_linearization_comparison
 from src.core.filter import LinearizedKalmanFilter, ExtendedKalmanFilter, continuous_to_discrete, system_jacobian, input_jacobian, UnscentedKalmanFilter
@@ -16,6 +16,7 @@ from src.utils.plotting import compute_nees
 from typing import Callable
 import src.utils.constants as constants
 from tuning import get_UKF_Q, get_UKF_R
+
 def control_input(t: float) -> np.ndarray:
     """Generate control inputs for both vehicles"""
     # UGV controls with sinusoidal steering
@@ -73,9 +74,22 @@ def simulate_linearized_system(x0: np.ndarray, t: np.ndarray, L: float, control_
         linear_states[i+1, 2] = np.mod(linear_states[i+1, 2] + np.pi, 2*np.pi) - np.pi
         linear_states[i+1, 5] = np.mod(linear_states[i+1, 5] + np.pi, 2*np.pi) - np.pi
     
-    return linear_states
+    # Add linearized measurement computation
+    linear_measurements = np.zeros((n_steps, 5))
+    for i in range(n_steps):
+        # Get measurement Jacobian at current state instead of nominal
+        H = measurement_jacobian(linear_states[i])
+        # Compute linearized measurement around current state
+        delta_y = H @ (linear_states[i] - linear_states[i])  # Will be zero
+        y_nominal = measurement_model(linear_states[i], np.zeros(5))
+        linear_measurements[i] = y_nominal + delta_y
+    
+    return linear_states, linear_measurements
 
 def main():
+    # Get T_FINAL from constants and ensure minimum 400 timesteps
+    T_FINAL = max(constants.T_FINAL, 400 * constants.DT)
+    
     # Initialize truth simulator
     truth_sim = TruthSimulator(L=L, dt=DT)
     
@@ -94,10 +108,19 @@ def main():
     )
     
     # Run linearized simulation
-    linear_states = simulate_linearized_system(x0_perturbed, t, L, control_input)
+    linear_states, linear_measurements = simulate_linearized_system(x0_perturbed, t, L, control_input)
+    
+    # Generate nonlinear measurements without noise
+    nonlinear_measurements = np.array([
+        measurement_model(state, np.zeros(5)) 
+        for state in true_states
+    ])
     
     # Plot linearization comparison
-    plot_linearization_comparison(t, true_states, linear_states)
+    plot_linearization_comparison(
+        t, true_states, linear_states,
+        nonlinear_measurements, linear_measurements
+    )
     
     # Store control inputs
     controls = np.array([control_input(t_i) for t_i in t])
