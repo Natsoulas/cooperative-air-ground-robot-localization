@@ -221,11 +221,11 @@ class UnscentedKalmanFilter(KalmanFilterBase):
     def __init__(self, x0: np.ndarray, P0: np.ndarray, Q: np.ndarray, R: np.ndarray, L: float):
         super().__init__(x0, P0, Q, R, L)
         
-        # UKF parameters - even more conservative
+        # Modified UKF parameters for more aggressive estimation
         self.n = len(x0)
-        self.alpha = 0.15    # Further reduced
-        self.beta = 2.0      # Keep optimal for Gaussian
-        self.kappa = -1.0    # Slightly negative for better spread
+        self.alpha = 0.4     # Increased to spread sigma points more
+        self.beta = 3.0      # Increased for non-Gaussian emphasis
+        self.kappa = -2.0    # Modified for better higher-order capture
         
         # Derived parameters
         self.lambda_ = self.alpha**2 * (self.n + self.kappa) - self.n

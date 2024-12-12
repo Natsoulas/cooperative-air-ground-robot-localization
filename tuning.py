@@ -82,20 +82,20 @@ def get_meas_noise_std() -> np.ndarray:
 def get_UKF_Q() -> np.ndarray:
     """Get UKF process noise covariance matrix"""
     return np.diag([
-        0.06,   # xi_g noise - minimal process noise
-        0.06,   # eta_g noise
-        0.2,    # theta_g noise - reduced
-        0.06,   # xi_a noise
-        0.06,   # eta_a noise
-        0.2     # theta_a noise
+        0.015,   # xi_g noise - even tighter
+        0.015,   # eta_g noise
+        0.05,    # theta_g noise - much tighter heading
+        0.01,    # xi_a noise - very tight for UAV
+        0.01,    # eta_a noise
+        0.05     # theta_a noise
     ])**2
 
 def get_UKF_R() -> np.ndarray:
     """Get UKF measurement noise covariance matrix"""
     return np.diag([
-        0.015**2,  # azimuth_g noise - tighter
-        3.5**2,    # range noise - reduced
-        0.015**2,  # azimuth_a noise
-        2.5**2,    # xi_a GPS noise - tighter
-        2.5**2     # eta_a GPS noise
+        0.01**2,   # azimuth_g noise - trust angles even more
+        2.0**2,    # range noise - trust range more
+        0.01**2,   # azimuth_a noise
+        1.0**2,    # xi_a GPS noise - very tight
+        1.0**2     # eta_a GPS noise
     ])
